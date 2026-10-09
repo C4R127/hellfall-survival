@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hellfall: Survival</title>
+  <meta name="description" content="Survival shooter top-down por oleadas hecho con HTML5 Canvas y JavaScript.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/menu.css">
+  <link rel="stylesheet" href="css/hud.css">
+  <link rel="stylesheet" href="css/animations.css">
+</head>
+<body>
+  <div id="app">
+    <canvas id="game"></canvas>
+
+    <!-- ======================= HUD ======================= -->
+    <div id="hud" class="hidden">
+      <div class="hud-tl">
+        <div class="hud-panel wave-box">
+          <span class="lbl">OLEADA</span>
+          <span id="h-wave" class="big">00</span>
+        </div>
+        <div class="hud-panel score-box">
+          <span class="lbl">PUNTUACIÓN</span>
+          <span id="h-score" class="big">0</span>
+        </div>
+        <div id="h-combo" class="combo">
+          <div class="combo-top"><span class="combo-lbl">COMBO</span> <span id="h-combo-n">x0</span></div>
+          <div class="combo-mult" id="h-combo-mult"></div>
+          <div class="combo-bar"><i id="h-combo-bar"></i></div>
+        </div>
+      </div>
+
+      <div class="hud-tr">
+        <canvas id="minimap" width="228" height="168"></canvas>
+        <div class="hud-panel enemies-left">
+          <span class="lbl">HOSTILES</span>
+          <span id="h-enemies" class="big">0</span>
+        </div>
+        <div id="h-intermission" class="intermission hidden"></div>
+      </div>
+
+      <div class="hud-bl">
+        <div class="level-row">
+          <span class="lvl">NV <b id="h-level">1</b></span>
+          <div class="bar xp"><i id="h-xp"></i></div>
+        </div>
+        <div class="stat-row">
+          <span class="lbl">HP</span>
+          <div class="bar hp"><em id="h-hp-lag"></em><i id="h-hp"></i></div>
+          <span id="h-hp-t" class="val">100</span>
+        </div>
+        <div class="stat-row">
+          <span class="lbl">ARMOR</span>
+          <div class="bar armor"><i id="h-armor"></i></div>
+          <span id="h-armor-t" class="val">0</span>
+        </div>
+        <div class="stat-row small">
+          <span class="lbl">STAMINA</span>
+          <div class="bar stamina"><i id="h-stamina"></i></div>
+        </div>
+        <div id="h-powers" class="powers"></div>
+      </div>
+
+      <div class="hud-bc">
+        <div class="skill" id="sk-dash">
+          <div class="icon">»</div><div class="cd"></div>
+          <div class="key" data-action="dash"></div><span class="charges"></span>
+          <div class="name">DASH</div>
+        </div>
+        <div class="skill" id="sk-grenade">
+          <div class="icon">●</div><div class="cd"></div>
+          <div class="key">RMB</div>
+          <div class="name">GRANADA</div>
+        </div>
+        <div class="skill" id="sk-ability">
+          <div class="icon">◎</div><div class="cd"></div>
+          <div class="key" data-action="ability"></div>
+          <div class="name">SHOCKWAVE</div>
+        </div>
+      </div>
+
+      <div class="hud-br">
+        <div class="weapon-head">
+          <div id="h-weapon" class="weapon-name">PISTOLA</div>
+          <div id="h-wlvl" class="weapon-lvl">NV 1</div>
+        </div>
+        <div class="ammo">
+          <span id="h-mag">12</span><span class="sep">/</span><span id="h-reserve">∞</span>
+        </div>
+        <div id="h-ammotype" class="ammo-type"></div>
+        <div id="h-slots" class="slots"></div>
+        <div class="coins"><span class="coin-ico"></span><span id="h-coins">0</span></div>
+      </div>
+
+      <div id="boss-bar" class="boss-bar hidden">
+        <div class="boss-head"><span id="boss-name"></span><span id="boss-phase"></span></div>
+        <div class="bar"><em id="boss-hp-lag"></em><i id="boss-hp"></i></div>
+      </div>
+
+      <div id="banner" class="banner">
+        <h2 id="banner-title"></h2>
+        <p id="banner-sub"></p>
+      </div>
+      <div id="hurt-overlay"></div>
+      <div id="lowhp-overlay"></div>
+    </div>
+
+    <!-- ===================== PANTALLAS ===================== -->
+    <div id="screens">
+
+      <section id="screen-menu" class="screen">
+        <div class="menu-wrap">
+          <div class="logo">
+            <div class="logo-top">HELLFALL</div>
+            <div class="logo-sub">SURVIVAL</div>
+            <div class="logo-tag">COMPLEJO EXPERIMENTAL HELLFALL · SECTOR 7 · CONTENCIÓN FALLIDA</div>
+          </div>
+          <nav class="menu-buttons">
+            <button class="btn primary" data-go="play">JUGAR</button>
+            <button class="btn" data-go="weapons">ARMAS</button>
+            <button class="btn" data-go="upgrades">MEJORAS</button>
+            <button class="btn" data-go="stats">ESTADÍSTICAS</button>
+            <button class="btn" data-go="settings">CONFIGURACIÓN</button>
+            <button class="btn ghost" data-go="exit">SALIR</button>
+          </nav>
+          <div class="menu-footer">
+            <div class="rec"><span>MEJOR OLEADA</span><b id="m-best-wave">0</b></div>
+            <div class="rec"><span>MEJOR PUNTUACIÓN</span><b id="m-best-score">0</b></div>
+            <div class="rec"><span>NÚCLEOS</span><b id="m-cores" class="cores">0</b></div>
+          </div>
+          <div class="controls-hint" id="controls-hint"></div>
+        </div>
+      </section>
+
+      <section id="screen-weapons" class="screen hidden">
+        <div class="panel wide">
+          <header class="panel-head">
+            <h2>ARSENAL</h2>
+            <div class="cores-pill">NÚCLEOS <b class="cores-val">0</b></div>
+          </header>
+          <p class="panel-desc">Las armas desbloqueadas aparecen en cajas durante la partida y pueden comprarse en la terminal de preparación.</p>
+          <div id="weapons-grid" class="cards-grid"></div>
+          <footer class="panel-foot"><button class="btn" data-back>VOLVER</button></footer>
+        </div>
+      </section>
+
+      <section id="screen-upgrades" class="screen hidden">
+        <div class="panel wide">
+          <header class="panel-head">
+            <h2>MEJORAS PERMANENTES</h2>
+            <div class="cores-pill">NÚCLEOS <b class="cores-val">0</b></div>
+          </header>
+          <p class="panel-desc">Los núcleos se obtienen al terminar cada partida según tu puntuación, las oleadas superadas y los jefes derrotados.</p>
+          <div id="meta-list" class="meta-list"></div>
+          <footer class="panel-foot">
+            <button class="btn danger" id="btn-reset">REINICIAR PROGRESO</button>
+            <button class="btn" data-back>VOLVER</button>
+          </footer>
+        </div>
+      </section>
+
+      <section id="screen-stats" class="screen hidden">
+        <div class="panel wide">
+          <header class="panel-head"><h2>ESTADÍSTICAS</h2></header>
+          <div class="stats-layout">
+            <div>
+              <h3>REGISTRO</h3>
+              <div id="stats-grid" class="stats-grid"></div>
+              <h3>BESTIARIO</h3>
+              <div id="bestiary" class="bestiary"></div>
+            </div>
+            <div>
+              <h3>LOGROS <span id="ach-count"></span></h3>
+              <div id="achievements" class="achievements"></div>
+            </div>
+          </div>
+          <footer class="panel-foot"><button class="btn" data-back>VOLVER</button></footer>
+        </div>
+      </section>
+
+      <section id="screen-settings" class="screen hidden">
+        <div class="panel">
+          <header class="panel-head"><h2>CONFIGURACIÓN</h2></header>
+          <div class="tabs">
+            <button class="tab active" data-tab="audio">AUDIO</button>
+            <button class="tab" data-tab="video">VIDEO</button>
+            <button class="tab" data-tab="controls">CONTROLES</button>
+          </div>
+          <div class="tab-body" data-body="audio">
+            <label class="row"><span>Volumen general</span><input type="range" min="0" max="1" step="0.05" data-set="master"><output></output></label>
+            <label class="row"><span>Música</span><input type="checkbox" data-set="musicOn"></label>
+            <label class="row"><span>Volumen de música</span><input type="range" min="0" max="1" step="0.05" data-set="music"><output></output></label>
+            <label class="row"><span>Efectos</span><input type="checkbox" data-set="sfxOn"></label>
+            <label class="row"><span>Volumen de efectos</span><input type="range" min="0" max="1" step="0.05" data-set="sfx"><output></output></label>
+          </div>
+          <div class="tab-body hidden" data-body="video">
+            <label class="row"><span>Calidad gráfica</span>
+              <select data-set="quality">
+                <option value="high">Alta (iluminación completa)</option>
+                <option value="medium">Media</option>
+                <option value="low">Baja (sin iluminación)</option>
+              </select>
+            </label>
+            <label class="row"><span>Pantalla completa</span><input type="checkbox" id="set-fullscreen"></label>
+            <label class="row"><span>Mostrar FPS</span><input type="checkbox" data-set="showFps"></label>
+            <label class="row"><span>Vibración de pantalla</span><input type="checkbox" data-set="shake"></label>
+            <label class="row"><span>Números de daño</span><input type="checkbox" data-set="damageNumbers"></label>
+            <label class="row"><span>Capturar ratón (puntero bloqueado)</span><input type="checkbox" data-set="pointerLock"></label>
+            <label class="row"><span>Sensibilidad (con ratón capturado)</span><input type="range" min="0.3" max="2.5" step="0.05" data-set="sensitivity"><output></output></label>
+          </div>
+          <div class="tab-body hidden" data-body="controls">
+            <p class="panel-desc">Haz clic en una tecla para reasignarla. Esc cancela. Apuntar: ratón · Disparar: clic izquierdo · Granada: clic derecho · Cambiar arma: rueda.</p>
+            <div id="bindings" class="bindings"></div>
+            <button class="btn small" id="btn-reset-keys">RESTABLECER CONTROLES</button>
+          </div>
+          <footer class="panel-foot"><button class="btn" data-back>VOLVER</button></footer>
+        </div>
+      </section>
+
+      <section id="screen-pause" class="screen hidden dim">
+        <div class="panel narrow center">
+          <h2>PAUSA</h2>
+          <div class="pause-info" id="pause-info"></div>
+          <nav class="menu-buttons">
+            <button class="btn primary" id="btn-resume">CONTINUAR</button>
+            <button class="btn" data-go="settings">CONFIGURACIÓN</button>
+            <button class="btn ghost" id="btn-quit">ABANDONAR PARTIDA</button>
+          </nav>
+        </div>
+      </section>
+
+      <section id="screen-levelup" class="screen hidden dim">
+        <div class="levelup-wrap">
+          <h2 class="lu-title" id="lu-title">¡NIVEL 2!</h2>
+          <p class="lu-sub">Elige una mejora · teclas 1 · 2 · 3</p>
+          <div id="lu-cards" class="lu-cards"></div>
+        </div>
+      </section>
+
+      <section id="screen-shop" class="screen hidden dim">
+        <div class="panel wide">
+          <header class="panel-head">
+            <h2>TERMINAL DE PREPARACIÓN</h2>
+            <div class="coins-pill"><span class="coin-ico"></span><b id="shop-coins">0</b></div>
+          </header>
+          <div class="shop-status" id="shop-status"></div>
+          <div id="shop-items" class="shop-grid"></div>
+          <h3>HABILIDAD EQUIPADA <small>(cambiar: 30 monedas)</small></h3>
+          <div id="shop-abilities" class="ability-row"></div>
+          <footer class="panel-foot">
+            <button class="btn" id="btn-shop-close">VOLVER A LA ARENA</button>
+            <button class="btn primary" id="btn-shop-next">INICIAR SIGUIENTE OLEADA</button>
+          </footer>
+        </div>
+      </section>
+
+      <section id="screen-gameover" class="screen hidden dim red">
+        <div class="panel narrow center">
+          <h2 class="go-title">GAME OVER</h2>
+          <div class="go-stats" id="go-stats"></div>
+          <div class="go-records" id="go-records"></div>
+          <div class="go-cores" id="go-cores"></div>
+          <nav class="menu-buttons">
+            <button class="btn primary" id="btn-again">JUGAR DE NUEVO</button>
+            <button class="btn" id="btn-menu">MENÚ PRINCIPAL</button>
+          </nav>
+        </div>
+      </section>
+
+      <section id="screen-exit" class="screen hidden">
+        <div class="panel narrow center">
+          <h2>FIN DE LA TRANSMISIÓN</h2>
+          <p class="panel-desc">Gracias por jugar a Hellfall: Survival. Ya puedes cerrar esta pestaña.</p>
+          <nav class="menu-buttons"><button class="btn" data-back>VOLVER AL MENÚ</button></nav>
+        </div>
+      </section>
+
+      <div id="confirm" class="confirm hidden">
+        <div class="panel narrow center">
+          <p id="confirm-text"></p>
+          <nav class="menu-buttons row">
+            <button class="btn danger" id="confirm-yes">SÍ</button>
+            <button class="btn" id="confirm-no">NO</button>
+          </nav>
+        </div>
+      </div>
+    </div>
+
+    <div id="toasts"></div>
+    <div id="loading" class="loading">CARGANDO SECTOR 7…</div>
+  </div>
+
+  <!-- Recursos de audio opcionales -->
+  <script src="assets/audio/manifest.js"></script>
+  <!-- Sistemas del juego (orden de carga importante) -->
+  <script src="js/utils.js"></script>
+  <script src="js/saveManager.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/sprites.js"></script>
+  <script src="js/map.js"></script>
+  <script src="js/collision.js"></script>
+  <script src="js/particle.js"></script>
+  <script src="js/projectile.js"></script>
+  <script src="js/weapon.js"></script>
+  <script src="js/player.js"></script>
+  <script src="js/enemy.js"></script>
+  <script src="js/boss.js"></script>
+  <script src="js/waveManager.js"></script>
+  <script src="js/item.js"></script>
+  <script src="js/upgrade.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
