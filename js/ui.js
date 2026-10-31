@@ -1,8 +1,17 @@
 'use strict';
-/* UIManager: HUD, menús, pantallas, indicadores, toasts y configuración. */
+/* UIManager: HUD, menús, pantallas, iconos, indicadores, toasts y configuración. */
 (function (HF) {
   const U = HF.U;
   const $ = (id) => document.getElementById(id);
+  const ICON = (id) => HF.Assets.url('icon_' + id) || `assets/ui/icons/${id}.png`;
+  const WART = (id) => HF.Assets.url('weapon_' + id) || `assets/ui/weapons/${id}.png`;
+  const img = (src, cls = '') => `<img src="${src}" alt="" class="${cls}">`;
+
+  const AMMO_ICON = { light: 'ammo_light', shells: 'ammo_shells', heavy: 'ammo_heavy', energy: 'ammo_energy', special: 'ammo_special' };
+  const META_ICON = { hp: 'up_maxhp', dmg: 'up_dmg', armor: 'up_armor', ammo: 'up_ammo', coins: 'up_coins', xp: 'level', dash: 'up_dashcd' };
+  const TOAST_ICON = { achievement: 'trophy', weapon: 'arsenal', power: 'combo', ability: 'shockwave', info: 'danger' };
+  const POWER_ICON = { quad: 'up_dmg', rapid: 'overdrive', invul: 'shield' };
+  const upgradeIcon = (u) => (u.id.startsWith('ab_') ? u.id.slice(3) : 'up_' + u.id);
 
   const UI = {
     game: null,
@@ -21,25 +30,23 @@
     init(game) {
       this.game = game;
       const ids = ['hud', 'h-wave', 'h-score', 'h-combo', 'h-combo-n', 'h-combo-mult', 'h-combo-bar', 'minimap', 'h-enemies',
-        'h-intermission', 'h-level', 'h-xp', 'h-hp', 'h-hp-lag', 'h-hp-t', 'h-armor', 'h-armor-t', 'h-stamina', 'h-powers',
-        'h-weapon', 'h-wlvl', 'h-mag', 'h-reserve', 'h-ammotype', 'h-slots', 'h-coins', 'boss-bar', 'boss-name', 'boss-phase',
-        'boss-hp', 'boss-hp-lag', 'banner', 'banner-title', 'banner-sub', 'hurt-overlay', 'lowhp-overlay', 'toasts'];
+        'h-intermission', 'h-level', 'h-xp', 'h-hp', 'h-hp-lag', 'h-hp-t', 'h-armor', 'h-armor-t', 'h-stamina', 'h-stamina-bar', 'h-powers',
+        'h-weapon', 'h-weapon-art', 'h-wlvl', 'h-mag', 'h-reserve', 'h-ammotype', 'h-ammo-ico', 'h-slots', 'h-coins', 'boss-bar', 'boss-name', 'boss-phase',
+        'boss-hp', 'boss-hp-lag', 'banner', 'banner-title', 'banner-sub', 'toasts'];
       for (const id of ids) this.el[id] = $(id);
       this.mini = this.el.minimap.getContext('2d');
-      this.skills = {
-        dash: $('sk-dash'), grenade: $('sk-grenade'), ability: $('sk-ability'),
-      };
+      this.skills = { dash: $('sk-dash'), grenade: $('sk-grenade'), ability: $('sk-ability') };
 
-      // navegación
       document.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => this.go(b.dataset.go)));
       document.querySelectorAll('[data-back]').forEach((b) => b.addEventListener('click', () => this.back()));
-      document.addEventListener('click', (e) => { if (e.target.closest('.btn, .tab, .card-btn')) HF.Audio.play('ui'); }, true);
+      document.addEventListener('click', (e) => { if (e.target.closest('.btn, .tab, .shop-item, .ability-card, .lu-card')) HF.Audio.play('ui'); }, true);
       document.addEventListener('mouseover', (e) => {
         const b = e.target.closest && e.target.closest('.btn:not([disabled])');
         if (b && b !== this._hover) { this._hover = b; HF.Audio.play('ui', { vol: 0.25 }); }
       });
       $('btn-resume').onclick = () => game.resume();
-      $('btn-quit').onclick = () => this.confirm('¿Abandonar la partida? Se guardarán tus estadísticas.', () => game.quitToMenu());
+      $('btn-restart').onclick = () => this.confirm('¿Reiniciar la partida? Se guardarán las estadísticas de la actual.', () => { game.recordRun(false); game.newRun(); });
+      $('btn-quit').onclick = () => this.confirm('¿Volver al menú principal? Se guardarán tus estadísticas.', () => game.quitToMenu());
       $('btn-again').onclick = () => game.newRun();
       $('btn-menu').onclick = () => game.quitToMenu();
       $('btn-shop-close').onclick = () => game.closeShop();
@@ -52,22 +59,17 @@
       $('confirm-no').onclick = () => $('confirm').classList.add('hidden');
 
       this.initSettings();
-
-      // atajos 1/2/3 en la subida de nivel
       addEventListener('keydown', (e) => {
         if (game.state !== 'levelup' || !this.luChoices) return;
         const i = ['Digit1', 'Digit2', 'Digit3'].indexOf(e.code);
         if (i >= 0 && this.luChoices[i]) this.pickLevelUp(i);
       });
-
       this.renderControlsHint();
     },
 
-    setText(el, v) {
-      if (this.cache.get(el) === v) return;
-      this.cache.set(el, v);
-      el.textContent = v;
-    },
+    setText(el, v) { if (this.cache.get(el) === v) return; this.cache.set(el, v); el.textContent = v; },
+    setHTML(el, v) { if (this.cache.get(el) === v) return; this.cache.set(el, v); el.innerHTML = v; },
+    setAttr(el, k, v) { const key = el.id + ':' + k; if (this.cache.get(key) === v) return; this.cache.set(key, v); el.setAttribute(k, v); },
     setWidth(el, f) {
       const v = (U.clamp(f, 0, 1) * 100).toFixed(1) + '%';
       if (this.cache.get(el) === v) return;
@@ -76,14 +78,11 @@
     },
 
     /* ---------------- pantallas ---------------- */
-    hideScreens() {
-      document.querySelectorAll('.screen').forEach((s) => s.classList.add('hidden'));
-    },
+    hideScreens() { document.querySelectorAll('.screen').forEach((s) => s.classList.add('hidden')); },
     showScreen(name) {
       this.hideScreens();
       const s = $('screen-' + name);
-      s.classList.remove('hidden');
-      s.classList.remove('enter');
+      s.classList.remove('hidden', 'enter');
       void s.offsetWidth;
       s.classList.add('enter');
       this.current = name;
@@ -91,12 +90,13 @@
     go(name) {
       HF.Audio.init();
       const g = this.game;
-      if (name === 'play') { g.newRun(); return; }
-      if (name === 'exit') { this.showScreen('exit'); this.backTo = 'menu'; return; }
+      if (name === 'play') { this.backTo = 'menu'; this.renderSectors(); this.showScreen('sectors'); return; }
+      if (name === 'exit') { this.backTo = 'menu'; this.showScreen('exit'); return; }
       this.backTo = this.current === 'pause' ? 'pause' : 'menu';
       if (name === 'weapons') this.renderWeapons();
       if (name === 'upgrades') this.renderMeta();
       if (name === 'stats') this.renderStats();
+      if (name === 'archive') this.renderArchive();
       if (name === 'settings') this.syncSettings();
       this.showScreen(name);
     },
@@ -136,13 +136,12 @@
       this.current = 'game';
       $('confirm').classList.add('hidden');
     },
+    infoCell(icon, label, value, extra = '') { return `<div class="${extra}">${img(ICON(icon))}<div><span>${label}</span><b>${value}</b></div></div>`; },
     showPause() {
       const g = this.game;
-      $('pause-info').innerHTML = `
-        <div><span>OLEADA</span><b>${g.waves.wave}</b></div>
-        <div><span>TIEMPO</span><b>${U.fmtTime(g.run.time)}</b></div>
-        <div><span>PUNTUACIÓN</span><b>${U.fmtNum(g.run.score)}</b></div>
-        <div><span>ENEMIGOS</span><b>${g.run.kills}</b></div>`;
+      $('pause-info').innerHTML =
+        this.infoCell('wave', 'OLEADA', g.waves.wave) + this.infoCell('clock', 'TIEMPO', U.fmtTime(g.run.time)) +
+        this.infoCell('score', 'PUNTUACIÓN', U.fmtNum(g.run.score)) + this.infoCell('kills', 'ENEMIGOS', g.run.kills);
       this.showScreen('pause');
     },
     confirm(text, onYes) {
@@ -165,14 +164,16 @@
       choices.forEach((u, i) => {
         const lvl = p.upgrades[u.id] || 0;
         const card = document.createElement('button');
-        card.className = `lu-card rarity-${u.rarity} cat-${u.cat.toLowerCase()}`;
+        card.className = `lu-card rarity-${u.rarity}`;
+        const pips = u.max < 99 ? Array.from({ length: u.max }, (_, k) => `<i class="${k < lvl ? 'on' : k === lvl ? 'next' : ''}"></i>`).join('') : '';
         card.innerHTML = `
           <div class="lu-key">${i + 1}</div>
+          ${img(ICON(upgradeIcon(u)), 'lu-icon')}
           <div class="lu-cat">${u.cat.toUpperCase()} · ${HF.UpgradeSystem.RARITY[u.rarity].name.toUpperCase()}</div>
           <div class="lu-name">${u.name}</div>
           <div class="lu-desc">${u.desc}</div>
-          <div class="lu-lvl">${u.max < 99 ? `NIVEL ${lvl} → ${lvl + 1} / ${u.max}` : ''}</div>`;
-        card.style.animationDelay = i * 70 + 'ms';
+          <div class="lu-lvl">${pips}</div>`;
+        card.style.animationDelay = i * 60 + 'ms';
         card.onclick = () => this.pickLevelUp(i);
         wrap.appendChild(card);
       });
@@ -193,19 +194,20 @@
       const g = this.game, p = g.player;
       $('shop-coins').textContent = p.coins;
       $('shop-status').innerHTML = `
-        <span>VIDA <b>${Math.ceil(p.hp)}/${p.maxHp}</b></span>
-        <span>ARMADURA <b>${Math.ceil(p.armor)}/${p.maxArmor}</b></span>
-        <span>NIVEL <b>${p.level}</b></span>
-        <span>PRÓXIMA OLEADA <b>${g.waves.wave + 1}${(g.waves.wave + 1) % 10 === 0 ? ' · JEFE' : ''}</b></span>`;
+        <span>${img(ICON('hp'))}VIDA <b>${Math.ceil(p.hp)}/${p.maxHp}</b></span>
+        <span>${img(ICON('armor'))}ARMADURA <b>${Math.ceil(p.armor)}/${p.maxArmor}</b></span>
+        <span>${img(ICON('level'))}NIVEL <b>${p.level}</b></span>
+        <span>${img(ICON((g.waves.wave + 1) % 10 === 0 ? 'boss' : 'wave'))}PRÓXIMA OLEADA <b>${g.waves.wave + 1}${(g.waves.wave + 1) % 10 === 0 ? ' · JEFE' : ''}</b></span>`;
       const grid = $('shop-items');
       grid.innerHTML = '';
+      const iconFor = (it) => it.weapon ? img(WART(it.weapon), 'wart') : img(ICON({ heal: 'hp', armor: 'armor', ammo: 'up_ammo', module: 'level' }[it.id] || 'coin'));
       for (const it of HF.UpgradeSystem.shopItems(g)) {
         const b = document.createElement('button');
         const afford = p.coins >= it.cost;
         b.className = 'shop-item' + (it.weapon ? ' weapon' : '');
         b.disabled = it.disabled || !afford;
-        b.innerHTML = `<div class="si-name">${it.name}</div><div class="si-desc">${it.disabled ? 'Ya está al máximo.' : it.desc}</div>
-          <div class="si-cost ${afford ? '' : 'no'}"><span class="coin-ico"></span>${it.cost}</div>`;
+        b.innerHTML = `${iconFor(it)}<div class="si-name">${it.name}</div><div class="si-desc">${it.disabled ? 'Ya está al máximo.' : it.desc}</div>
+          <div class="si-cost ${afford ? '' : 'no'}">${img(ICON('coin'))}${it.cost}</div>`;
         b.onclick = () => { if (g.buy(it) && g.state === 'shop') this.showShop(); };
         grid.appendChild(b);
       }
@@ -217,8 +219,8 @@
         const b = document.createElement('button');
         b.className = 'ability-card' + (eq ? ' equipped' : '');
         b.disabled = eq || p.coins < 30;
-        b.innerHTML = `<div class="ab-icon" style="color:${a.color}">${a.icon}</div><div class="ab-name">${a.name}</div>
-          <div class="ab-desc">${a.desc}</div><div class="ab-cd">Recarga ${a.cd}s</div><div class="ab-tag">${eq ? 'EQUIPADA' : 'EQUIPAR · 30'}</div>`;
+        b.innerHTML = `${img(ICON(id))}<div class="ab-name">${a.name}</div><div class="ab-desc">${a.desc}</div>
+          <div class="ab-cd">RECARGA ${a.cd} S</div><div class="ab-tag">${eq ? 'EQUIPADA' : 'EQUIPAR · 30'}</div>`;
         b.onclick = () => { if (g.equipAbility(id, 30)) this.showShop(); };
         ab.appendChild(b);
       }
@@ -229,17 +231,15 @@
     /* ---------------- game over ---------------- */
     showGameOver(d) {
       this.el.hud.classList.add('hidden');
-      $('go-stats').innerHTML = `
-        <div><span>OLEADA</span><b>${d.wave}</b></div>
-        <div><span>ENEMIGOS</span><b>${d.kills}</b></div>
-        <div><span>PUNTUACIÓN</span><b>${U.fmtNum(d.score)}</b></div>
-        <div><span>TIEMPO</span><b>${U.fmtTime(d.time)}</b></div>
-        <div><span>NIVEL</span><b>${d.level}</b></div>
-        <div><span>MEJOR COMBO</span><b>x${d.bestCombo}</b></div>`;
-      $('go-records').innerHTML = `
-        <div class="${d.newWave ? 'new' : ''}"><span>MEJOR OLEADA</span><b>${d.bestWave}</b>${d.newWave ? '<i>¡NUEVO RÉCORD!</i>' : ''}</div>
-        <div class="${d.newScore ? 'new' : ''}"><span>MEJOR PUNTUACIÓN</span><b>${U.fmtNum(d.bestScore)}</b>${d.newScore ? '<i>¡NUEVO RÉCORD!</i>' : ''}</div>`;
-      $('go-cores').innerHTML = `+${d.cores} NÚCLEOS <small>(total ${HF.SaveManager.data.cores})</small>`;
+      document.body.classList.remove('in-game');
+      $('go-stats').innerHTML =
+        this.infoCell('wave', 'OLEADA', d.wave) + this.infoCell('kills', 'ENEMIGOS', d.kills) +
+        this.infoCell('score', 'PUNTUACIÓN', U.fmtNum(d.score)) + this.infoCell('clock', 'TIEMPO', U.fmtTime(d.time)) +
+        this.infoCell('level', 'NIVEL', d.level) + this.infoCell('combo', 'MEJOR COMBO', 'x' + d.bestCombo);
+      $('go-records').innerHTML =
+        this.infoCell('trophy', 'MEJOR OLEADA', d.bestWave + (d.newWave ? ' <i>¡RÉCORD!</i>' : ''), d.newWave ? 'new' : '') +
+        this.infoCell('trophy', 'MEJOR PUNTUACIÓN', U.fmtNum(d.bestScore) + (d.newScore ? ' <i>¡RÉCORD!</i>' : ''), d.newScore ? 'new' : '');
+      $('go-cores').innerHTML = `${img(ICON('core'))}+${d.cores} NÚCLEOS <small>(total ${HF.SaveManager.data.cores})</small>`;
       this.showScreen('gameover');
     },
 
@@ -262,21 +262,16 @@
     toast(msg, type = 'info') {
       const t = document.createElement('div');
       t.className = 'toast ' + type;
-      t.textContent = msg;
+      const icon = type === 'ability' && this.game && this.game.player ? this.game.player.ability.id : TOAST_ICON[type] || 'danger';
+      t.innerHTML = img(ICON(icon)) + '<span></span>';
+      t.lastChild.textContent = msg;
       const box = this.el.toasts;
       box.appendChild(t);
-      while (box.children.length > 5) box.firstChild.remove();
+      while (box.children.length > 4) box.firstChild.remove();
       setTimeout(() => t.classList.add('out'), 2600);
-      setTimeout(() => t.remove(), 3100);
+      setTimeout(() => t.remove(), 3000);
     },
-    hurt(k) {
-      const o = this.el['hurt-overlay'];
-      o.style.transition = 'none';
-      o.style.opacity = String(0.55 * k);
-      void o.offsetWidth;
-      o.style.transition = 'opacity 0.45s ease-out';
-      o.style.opacity = '0';
-    },
+    hurt(k) { if (this.game) this.game.hurtFlash = Math.max(this.game.hurtFlash, k); },
     flashWeapon() {
       const w = this.el['h-weapon'];
       w.classList.remove('flash');
@@ -295,14 +290,15 @@
         const s = document.createElement('div');
         const owned = !!p.weapons[id];
         s.className = 'slot' + (owned ? ' owned' : '') + (p.current === id ? ' current' : '');
-        s.innerHTML = `<b>${i + 1}</b><span>${owned ? HF.WEAPONS[id].short.slice(0, 4) : '—'}</span>`;
+        s.innerHTML = `<b>${i + 1}</b>${img(WART(id))}`;
+        s.title = HF.WEAPONS[id].name;
         box.appendChild(s);
       });
       this.slotCurrent = p.current;
     },
     updateKeyLabels() {
       document.querySelectorAll('.skill .key[data-action]').forEach((k) => {
-        k.textContent = HF.Input.codeLabel(HF.Input.bindings[k.dataset.action][0]);
+        k.textContent = HF.Input.codeLabel(HF.Input.bindings[k.dataset.action][0]).slice(0, 4).toUpperCase();
       });
     },
 
@@ -318,7 +314,6 @@
       this.setText(E['h-wave'], String(W.wave).padStart(2, '0'));
       this.setText(E['h-score'], U.fmtNum(g.run.score));
 
-      // combo
       const comboOn = g.combo >= 2;
       E['h-combo'].classList.toggle('active', comboOn);
       if (comboOn) {
@@ -328,66 +323,60 @@
         E['h-combo'].classList.toggle('hot', g.combo >= 15);
       }
 
-      // oleada / enemigos
       this.setText(E['h-enemies'], W.state === 'active' ? String(W.remaining) : '—');
       const inter = E['h-intermission'];
       if (W.state === 'intermission' && g.state !== 'dying') {
         inter.classList.remove('hidden');
         const ready = HF.Input.codeLabel(HF.Input.bindings.ready[0]);
         const use = HF.Input.codeLabel(HF.Input.bindings.interact[0]);
-        const txt = W.prep
-          ? `ZONA SEGURA · Ve a la terminal [${use}] · [${ready}] iniciar oleada ${W.wave + 1}`
-          : `OLEADA ${W.wave + 1} EN ${Math.ceil(Math.max(0, W.timer))} s · [${ready}] adelantar`;
-        this.setText(inter, txt);
+        this.setText(inter, W.prep
+          ? `ZONA SEGURA · TERMINAL [${use}] · [${ready}] OLEADA ${W.wave + 1}`
+          : `OLEADA ${W.wave + 1} EN ${Math.ceil(Math.max(0, W.timer))} S · [${ready}] ADELANTAR`);
         inter.classList.toggle('prep', W.prep);
       } else inter.classList.add('hidden');
 
-      // vida / armadura / stamina / xp
       const hpF = p.hp / p.maxHp;
-      this.hpLag = Math.max(hpF, U.damp(this.hpLag, hpF, 2.5, dt));
+      this.hpLag = Math.max(hpF, U.damp(this.hpLag, hpF, 3, dt));
       this.setWidth(E['h-hp'], hpF);
       this.setWidth(E['h-hp-lag'], this.hpLag);
       this.setText(E['h-hp-t'], `${Math.ceil(p.hp)}/${p.maxHp}`);
       this.setWidth(E['h-armor'], p.armor / p.maxArmor);
       this.setText(E['h-armor-t'], `${Math.ceil(p.armor)}/${p.maxArmor}`);
       this.setWidth(E['h-stamina'], p.stamina / p.maxStamina);
-      E['h-stamina'].parentElement.classList.toggle('exhausted', p.exhausted);
+      E['h-stamina-bar'].classList.toggle('exhausted', p.exhausted);
       this.setText(E['h-level'], String(p.level));
       this.setWidth(E['h-xp'], p.xp / p.xpNext);
-      const low = hpF < 0.3 && p.alive;
-      E['lowhp-overlay'].style.opacity = low ? String(0.35 + Math.sin(g.time * 6) * 0.15) : '0';
 
-      // power-ups activos
       const pw = [];
-      for (const k in p.power) if (p.power[k] > 0) pw.push(`<span style="color:${HF.POWERUPS[k].color}">${HF.POWERUPS[k].name} ${Math.ceil(p.power[k])}s</span>`);
-      if (p.ability.active > 0) pw.push(`<span style="color:${p.abilityDef.color}">${p.abilityDef.name.toUpperCase()} ${Math.ceil(p.ability.active)}s</span>`);
-      if (p.exhausted) pw.push('<span style="color:#ff8a5a">AGOTADO</span>');
+      for (const k in p.power) if (p.power[k] > 0) pw.push(`<span class="power-chip" style="color:${HF.POWERUPS[k].color}">${img(ICON(POWER_ICON[k]))}${HF.POWERUPS[k].name} ${Math.ceil(p.power[k])}S</span>`);
+      if (p.ability.active > 0) pw.push(`<span class="power-chip" style="color:${p.abilityDef.color}">${img(ICON(p.ability.id))}${p.abilityDef.name.toUpperCase()} ${Math.ceil(p.ability.active)}S</span>`);
+      if (p.exhausted) pw.push(`<span class="power-chip" style="color:#ff8a5a">${img(ICON('danger'))}AGOTADO</span>`);
       this.setHTML(E['h-powers'], pw.join(''));
 
-      // habilidades
       const D = p.dash;
       this.setSkill(this.skills.dash, D.charges > 0 ? 0 : 1 - D.t / D.cd, D.max > 1 ? String(D.charges) : '');
       this.setSkill(this.skills.grenade, Math.max(0, p.grenade.t / p.grenade.cd), '');
       const A = p.ability, ad = p.abilityDef;
       this.setSkill(this.skills.ability, A.active > 0 ? 0 : Math.max(0, A.t / p.abilityCd), '', A.active > 0);
       this.setText(this.skills.ability.querySelector('.name'), ad.name.toUpperCase());
-      this.setText(this.skills.ability.querySelector('.icon'), ad.icon);
+      const aico = this.skills.ability.querySelector('.ico');
+      if (this.cache.get('aico') !== A.id) { this.cache.set('aico', A.id); aico.src = ICON(A.id); }
 
-      // arma
       if (this.slotCurrent !== p.current) this.renderSlots();
       this.setText(E['h-weapon'], w.def.short);
-      this.setText(E['h-wlvl'], 'NV ' + w.level);
+      this.setAttr(E['h-weapon-art'], 'src', WART(w.id));
+      this.setHTML(E['h-wlvl'], Array.from({ length: HF.WEAPON_MAX_LEVEL }, (_, k) => `<i class="${k < w.level ? 'on' : ''}"></i>`).join(''));
       const ms = w.magSize(p);
       this.setText(E['h-mag'], p.overdriveActive ? '∞' : String(w.mag));
       E['h-mag'].classList.toggle('low', !p.overdriveActive && w.mag <= Math.ceil(ms * 0.25));
       const res = w.reserve(p);
       this.setText(E['h-reserve'], res === Infinity ? '∞' : String(res));
       const at = w.def.ammoType;
+      this.setAttr(E['h-ammo-ico'], 'src', ICON(at ? AMMO_ICON[at] : 'ammo_inf'));
       this.setText(E['h-ammotype'], w.reloading ? 'RECARGANDO…' : at ? HF.AMMO_TYPES[at].name.toUpperCase() : 'MUNICIÓN INFINITA');
-      E['h-ammotype'].style.color = w.reloading ? '#ffd03a' : at ? HF.AMMO_TYPES[at].color : '#9aa4b2';
+      E['h-ammotype'].style.color = w.reloading ? '#ffcc3a' : at ? HF.AMMO_TYPES[at].color : '#9aa4b2';
       this.setText(E['h-coins'], U.fmtNum(p.coins));
 
-      // jefe
       const b = g.boss;
       if (b && b.alive) {
         const f = b.hp / b.maxHp;
@@ -400,16 +389,11 @@
       this.miniT -= dt;
       if (this.miniT <= 0) { this.miniT = 0.08; this.drawMinimap(); }
     },
-    setHTML(el, html) {
-      if (this.cache.get(el) === html) return;
-      this.cache.set(el, html);
-      el.innerHTML = html;
-    },
     setSkill(el, cdFrac, charges, active) {
       const cd = el.querySelector('.cd');
       const v = (U.clamp(cdFrac, 0, 1) * 100).toFixed(0) + '%';
       if (this.cache.get(cd) !== v) { this.cache.set(cd, v); cd.style.height = v; }
-      el.classList.toggle('ready', cdFrac <= 0);
+      el.classList.toggle('ready', cdFrac <= 0 && !active);
       el.classList.toggle('active', !!active);
       const c = el.querySelector('.charges');
       if (c) this.setText(c, charges);
@@ -421,52 +405,134 @@
       const k = cw / m.pw;
       ctx.imageSmoothingEnabled = false;
       ctx.clearRect(0, 0, cw, ch);
-      ctx.globalAlpha = 0.9;
       ctx.drawImage(m.mini, 0, 0, cw, ch);
-      ctx.globalAlpha = 1;
-      // zonas tóxicas
       ctx.fillStyle = 'rgba(120,255,60,0.35)';
-      for (const t of m.toxic) { ctx.beginPath(); ctx.arc(t.x * k, t.y * k, t.r * k, 0, U.TAU); ctx.fill(); }
-      // terminal en preparación
+      for (const t of m.toxic) { const r = Math.round(t.r * k); ctx.fillRect(Math.round(t.x * k - r), Math.round(t.y * k - r), r * 2, r * 2); }
       if (g.waves && g.waves.state === 'intermission' && g.waves.prep && Math.floor(g.time * 3) % 2) {
-        ctx.strokeStyle = '#3affaa'; ctx.lineWidth = 2;
-        ctx.strokeRect(m.terminal.x * k - 6, m.terminal.y * k - 6, 12, 12);
+        ctx.fillStyle = '#3affaa';
+        ctx.fillRect(Math.round(m.terminal.x * k) - 5, Math.round(m.terminal.y * k) - 5, 10, 10);
       }
-      ctx.fillStyle = '#ffd040';
-      g.items.forEach((it) => { if (it.type !== 'coin') ctx.fillRect(it.x * k - 1, it.y * k - 1, 2, 2); });
+      ctx.fillStyle = '#ffcc3a';
+      g.items.forEach((it) => { if (it.type !== 'coin') ctx.fillRect(Math.round(it.x * k) - 1, Math.round(it.y * k) - 1, 2, 2); });
+      g.items.forEach((it) => {
+        if (it.type !== 'log') return;
+        ctx.fillStyle = Math.floor(g.time * 4) % 2 ? '#3affaa' : '#ffffff';
+        ctx.fillRect(Math.round(it.x * k) - 3, Math.round(it.y * k) - 3, 6, 6);
+      });
       ctx.fillStyle = '#ff5a2a';
-      for (const s of g.spawnMarkers) ctx.fillRect(s.x * k - 1, s.y * k - 1, 3, 3);
+      for (const s of g.spawnMarkers) ctx.fillRect(Math.round(s.x * k) - 1, Math.round(s.y * k) - 1, 3, 3);
       g.enemies.forEach((e) => {
         if (!e.alive) return;
-        ctx.fillStyle = e.elite ? '#ffbe28' : '#ff3030';
+        ctx.fillStyle = e.elite ? '#ffcc3a' : '#ff3030';
         const s = e.r > 18 ? 4 : 3;
-        ctx.fillRect(e.x * k - s / 2, e.y * k - s / 2, s, s);
+        ctx.fillRect(Math.round(e.x * k - s / 2), Math.round(e.y * k - s / 2), s, s);
       });
-      if (g.boss && g.boss.alive) {
-        ctx.fillStyle = '#ff2a6a';
-        ctx.beginPath(); ctx.arc(g.boss.x * k, g.boss.y * k, 5, 0, U.TAU); ctx.fill();
-      }
+      if (g.boss && g.boss.alive) { ctx.fillStyle = '#ff2a6a'; ctx.fillRect(Math.round(g.boss.x * k) - 4, Math.round(g.boss.y * k) - 4, 8, 8); }
       const v = g.view;
-      ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1;
-      ctx.strokeRect(v.x * k, v.y * k, v.w * k, v.h * k);
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 1;
+      ctx.strokeRect(Math.round(v.x * k) + 0.5, Math.round(v.y * k) + 0.5, Math.round(v.w * k), Math.round(v.h * k));
       const p = g.player;
-      ctx.save();
-      ctx.translate(p.x * k, p.y * k);
-      ctx.rotate(p.angle);
+      ctx.fillStyle = '#05040a';
+      ctx.fillRect(Math.round(p.x * k) - 3, Math.round(p.y * k) - 3, 6, 6);
       ctx.fillStyle = '#7ff6ff';
-      ctx.beginPath(); ctx.moveTo(5, 0); ctx.lineTo(-3, -3.5); ctx.lineTo(-3, 3.5); ctx.closePath(); ctx.fill();
-      ctx.restore();
+      ctx.fillRect(Math.round(p.x * k) - 2, Math.round(p.y * k) - 2, 4, 4);
+      ctx.fillRect(Math.round(p.x * k + Math.cos(p.angle) * 5), Math.round(p.y * k + Math.sin(p.angle) * 5), 2, 2);
     },
 
     /* ---------------- menús de progreso ---------------- */
-    spriteCanvas(name, scale = 2) {
-      const s = HF.Sprites.get(name);
-      const c = U.makeCanvas(s.w * scale, s.h * scale);
-      const x = c.getContext('2d');
-      x.imageSmoothingEnabled = false;
-      x.drawImage(s.img, 0, 0, c.width, c.height);
-      c.className = 'pix';
-      return c;
+    renderArchive() {
+      const St = HF.Story, d = St.data;
+      $('archive-count').innerHTML = `${img(ICON('stats'))}REGISTROS <b class="num">${d.logs.length}/${St.LOGS.length}</b>`;
+      document.querySelectorAll('[data-atab]').forEach((t) => {
+        t.onclick = () => {
+          document.querySelectorAll('[data-atab]').forEach((x) => x.classList.toggle('active', x === t));
+          document.querySelectorAll('[data-abody]').forEach((b) => b.classList.toggle('hidden', b.dataset.abody !== t.dataset.atab));
+        };
+      });
+      // registros
+      const list = $('archive-list'), reader = $('archive-reader');
+      list.innerHTML = '';
+      reader.innerHTML = '<p class="panel-desc">Los registros aparecen en el mapa al completar oleadas (marca verde en el minimapa). Cada sector guarda cuatro.</p>';
+      let first = null;
+      for (const log of St.LOGS) {
+        const got = d.logs.includes(log.id);
+        const S = HF.SECTORS[log.sector];
+        const b = document.createElement('button');
+        b.className = 'archive-item' + (got ? '' : ' locked');
+        b.innerHTML = `<small style="color:${S.accent}">${S.code}</small><span>${got ? log.title : '— Registro no recuperado —'}</span>`;
+        if (got) {
+          b.onclick = () => {
+            list.querySelectorAll('.archive-item').forEach((x) => x.classList.remove('active'));
+            b.classList.add('active');
+            reader.innerHTML = `<small class="lbl">${S.code} · ${S.name.toUpperCase()}</small><h3>${log.title}</h3><p></p>`;
+            reader.querySelector('p').textContent = log.text;
+          };
+          if (!first) first = b;
+        }
+        list.appendChild(b);
+      }
+      if (first) first.click();
+      // expedientes de los jefes
+      const dos = $('archive-dossiers');
+      dos.innerHTML = '';
+      for (const id of HF.SECTOR_ORDER) {
+        const S = HF.SECTORS[id], boss = S.boss, got = d.dossiers.includes(boss);
+        const scene = St.BOSS_SCENES[boss][0];
+        const c = document.createElement('div');
+        c.className = 'dossier' + (got ? '' : ' locked');
+        c.innerHTML = `<h4>${got ? HF.BOSSES[boss].name : '???'}</h4><div class="dz-art"></div><p></p>`;
+        c.querySelector('p').textContent = got ? scene.text : 'Derrota al jefe de ' + S.code + ' para desbloquear su expediente.';
+        if (got) c.querySelector('.dz-art').appendChild(HF.Assets.frameCanvas('boss_' + boss, 'idle', 0, 2, 1));
+        else c.querySelector('.dz-art').innerHTML = img(ICON('lock'));
+        dos.appendChild(c);
+      }
+      // escenas
+      const sc = $('archive-scenes');
+      sc.innerHTML = '';
+      const add = (label, slides, ok) => {
+        const b = document.createElement('button');
+        b.className = 'btn' + (ok ? '' : ' ghost');
+        b.disabled = !ok;
+        b.innerHTML = `${img(ICON(ok ? 'play' : 'lock'))}${label}`;
+        b.onclick = () => St.playScene(slides, () => this.showScreen('archive'));
+        sc.appendChild(b);
+      };
+      add('INTRODUCCIÓN', St.INTRO, true);
+      for (const id of HF.SECTOR_ORDER) { const boss = HF.SECTORS[id].boss; add('EXPEDIENTE: ' + HF.BOSSES[boss].name, St.BOSS_SCENES[boss], d.dossiers.includes(boss)); }
+      add('FINAL', St.ENDING, !!d.endingSeen);
+    },
+    renderSectors() {
+      const d = HF.SaveManager.data, g = this.game;
+      const grid = $('sectors-grid');
+      grid.innerHTML = '';
+      HF.SECTOR_ORDER.forEach((id, i) => {
+        const S = HF.SECTORS[id];
+        const open = d.unlockedSectors.includes(id);
+        const card = document.createElement('div');
+        card.className = 'sector-card' + (open ? '' : ' locked') + (g.selectedSector === id ? ' selected' : '');
+        card.style.setProperty('--accent', S.accent);
+        const boss = HF.BOSSES[S.boss];
+        const fauna = S.fauna.map((t) => HF.ENEMIES[t].name).join(', ') || 'Bestiario básico';
+        card.innerHTML = `
+          <div class="sc-code">${S.code}</div>
+          <div class="sc-name">${S.name.toUpperCase()}</div>
+          <div class="sc-art"></div>
+          <p class="sc-desc">${open ? S.desc : 'Alcanza este sector durante una partida para desbloquearlo.'}</p>
+          <div class="sc-info"><span>${img(ICON('boss'))}JEFE</span><b>${open ? boss.name : '???'}</b></div>
+          <div class="sc-info"><span>${img(ICON('danger'))}PELIGRO</span><b>${HF.POOL_KINDS[S.pool].name}</b></div>
+          <div class="sc-info"><span>${img(ICON('enemy'))}FAUNA</span><b>${open ? fauna : '???'}</b></div>
+          <div class="sc-foot"></div>`;
+        if (open) card.querySelector('.sc-art').appendChild(HF.Assets.frameCanvas('boss_' + S.boss, 'idle', 0, 2, 1));
+        else card.querySelector('.sc-art').innerHTML = img(ICON('lock'), 'sc-lock');
+        const b = document.createElement('button');
+        b.className = 'btn small' + (open ? ' primary' : '');
+        b.disabled = !open;
+        b.innerHTML = open ? `${img(ICON('play'))}DESPLEGAR` : `${img(ICON('lock'))}BLOQUEADO`;
+        b.onclick = () => { g.selectedSector = id; g.newRun(id); };
+        card.querySelector('.sc-foot').appendChild(b);
+        card.onmouseenter = () => { if (open && g.state === 'menu' && g.map.sector.id !== id) { g.selectedSector = id; g.loadSector(id); } };
+        grid.appendChild(card);
+      });
     },
     renderWeapons() {
       const d = HF.SaveManager.data;
@@ -482,25 +548,25 @@
         const dps = w.dmg * w.pellets * w.rate;
         const precision = w.type === 'chain' ? 'Automática' : w.spread < 0.04 ? 'Muy alta' : w.spread < 0.08 ? 'Alta' : 'Baja';
         const rangeTxt = w.range >= 850 ? 'Alto' : w.range >= 600 ? 'Medio' : 'Corto';
+        const ammoName = w.ammoType ? HF.AMMO_TYPES[w.ammoType].name : 'Munición infinita';
         card.innerHTML = `
           <div class="wc-head"><span class="wc-slot">${w.slot}</span><div><div class="wc-name">${w.name}</div>
-          <div class="wc-ammo" style="color:${w.ammoType ? HF.AMMO_TYPES[w.ammoType].color : '#9aa4b2'}">${w.ammoType ? HF.AMMO_TYPES[w.ammoType].name : 'Munición infinita'}</div></div></div>
-          <div class="wc-art"></div>
+          <div class="wc-ammo" style="color:${w.ammoType ? HF.AMMO_TYPES[w.ammoType].color : '#9aa4b2'}">${img(ICON(w.ammoType ? AMMO_ICON[w.ammoType] : 'ammo_inf'))}${ammoName}</div></div></div>
+          <div class="wc-art">${img(WART(id))}</div>
           <p class="wc-desc">${w.desc}</p>
-          ${bar('Daño', (w.dmg * w.pellets) / 100, w.pellets > 1 ? `${w.dmg}×${w.pellets}` : w.dmg + (w.explode ? ' (área)' : ''))}
+          ${bar('Daño', (w.dmg * w.pellets) / 100, w.pellets > 1 ? `${w.dmg}×${w.pellets}` : w.dmg + (w.explode ? ' área' : ''))}
           ${bar('Cadencia', w.rate / 9, w.rate + '/s')}
           ${bar('DPS', dps / 200, Math.round(dps))}
           ${bar('Cargador', w.mag / 60, w.mag)}
           ${bar('Recarga', 1 - w.reload / 3, w.reload + ' s')}
           <div class="wc-extra"><span>Munición máx.: <b>${w.maxAmmo === Infinity ? '∞' : w.maxAmmo}</b></span><span>Alcance: <b>${rangeTxt}</b></span><span>Precisión: <b>${precision}</b></span><span>Crítico: <b>${Math.round(w.crit * 100)}%</b></span></div>
           <div class="wc-foot"></div>`;
-        card.querySelector('.wc-art').appendChild(this.spriteCanvas('w_' + id, 4));
         const foot = card.querySelector('.wc-foot');
-        if (unlocked) foot.innerHTML = '<span class="ok">DESBLOQUEADA</span>';
+        if (unlocked) foot.innerHTML = `<span class="ok">${img(ICON('check'))}DESBLOQUEADA</span>`;
         else {
           const b = document.createElement('button');
-          b.className = 'btn small primary card-btn';
-          b.textContent = `DESBLOQUEAR · ${w.cost} NÚCLEOS`;
+          b.className = 'btn small primary';
+          b.innerHTML = `${img(ICON('lock'))}DESBLOQUEAR · ${w.cost}`;
           b.disabled = d.cores < w.cost;
           b.onclick = () => {
             if (d.cores < w.cost) return;
@@ -527,13 +593,13 @@
         row.className = 'meta-row';
         const pips = Array.from({ length: m.max }, (_, i) => `<i class="${i < lvl ? 'on' : ''}"></i>`).join('');
         const cost = HF.UpgradeSystem.metaCost(m, lvl);
-        row.innerHTML = `<div class="mr-info"><div class="mr-name">${m.name}</div><div class="mr-desc">${m.desc}</div></div>
+        row.innerHTML = `${img(ICON(META_ICON[m.id] || 'core'))}<div class="mr-info"><div class="mr-name">${m.name}</div><div class="mr-desc">${m.desc}</div></div>
           <div class="pips">${pips}</div><div class="mr-btn"></div>`;
         const b = document.createElement('button');
-        b.className = 'btn small card-btn' + (lvl < m.max ? ' primary' : '');
-        if (lvl >= m.max) { b.textContent = 'MÁXIMO'; b.disabled = true; }
+        b.className = 'btn small' + (lvl < m.max ? ' primary' : '');
+        if (lvl >= m.max) { b.innerHTML = `${img(ICON('check'))}MÁXIMO`; b.disabled = true; }
         else {
-          b.textContent = `MEJORAR · ${cost}`;
+          b.innerHTML = `${img(ICON('core'))}MEJORAR · ${cost}`;
           b.disabled = d.cores < cost;
           b.onclick = () => {
             if (d.cores < cost) return;
@@ -556,24 +622,27 @@
         ['Supervivencia más larga', U.fmtTime(d.best.time)], ['Nivel más alto', d.best.level], ['Jefes derrotados', s.bosses],
         ['Disparos realizados', U.fmtNum(s.shots)], ['Daño infligido', U.fmtNum(s.damageDealt)], ['Monedas recogidas', U.fmtNum(s.coinsEarned)],
         ['Núcleos obtenidos', U.fmtNum(s.coresEarned)], ['Núcleos disponibles', d.cores],
+        ['Sectores descubiertos', `${d.unlockedSectors.length}/${HF.SECTOR_ORDER.length}`], ['Tipos de jefe derrotados', `${Object.keys(s.bossTypes || {}).length}/4`],
       ];
       $('stats-grid').innerHTML = rows.map(([k, v]) => `<div class="st"><span>${k}</span><b>${v}</b></div>`).join('');
       const best = $('bestiary');
       best.innerHTML = '';
       for (const id in HF.ENEMIES) {
         const e = HF.ENEMIES[id];
+        if (e.hidden) continue;
         const row = document.createElement('div');
         row.className = 'beast';
         row.innerHTML = `<div class="b-art"></div><div class="b-info"><div class="b-name">${e.name} <small>${e.role}</small></div>
           <div class="b-desc">${e.desc}</div></div><div class="b-kills">${U.fmtNum(s.killsByType[id] || 0)}</div>`;
-        row.querySelector('.b-art').appendChild(this.spriteCanvas(id, 1));
+        const sh = HF.Assets.sheet('enemy_' + id);
+        row.querySelector('.b-art').appendChild(HF.Assets.frameCanvas('enemy_' + id, 'idle', 0, 2, sh && sh.fw <= 34 ? 2 : 1));
         best.appendChild(row);
       }
       const ach = HF.UpgradeSystem.ACHIEVEMENTS;
       const got = ach.filter((a) => d.achievements[a.id]).length;
       $('ach-count').textContent = `${got}/${ach.length}`;
       $('achievements').innerHTML = ach.map((a) => `<div class="ach ${d.achievements[a.id] ? 'got' : ''}">
-        <div class="ach-ico">${d.achievements[a.id] ? '★' : '☆'}</div><div><div class="ach-name">${a.name}</div><div class="ach-desc">${a.desc}</div></div></div>`).join('');
+        ${img(ICON(d.achievements[a.id] ? 'trophy' : 'lock'))}<div><div class="ach-name">${a.name}</div><div class="ach-desc">${a.desc}</div></div></div>`).join('');
     },
 
     /* ---------------- configuración ---------------- */
@@ -620,7 +689,7 @@
       document.querySelectorAll('[data-set]').forEach((inp) => {
         const v = s[inp.dataset.set];
         if (inp.type === 'checkbox') inp.checked = !!v;
-        else inp.value = v;
+        else inp.value = String(v);
         this.updateOutput(inp);
       });
       $('set-fullscreen').checked = !!document.fullscreenElement;
@@ -638,7 +707,7 @@
           b.className = 'key-btn';
           b.textContent = I.codeLabel(I.bindings[action][i]);
           b.onclick = () => {
-            b.textContent = 'Pulsa una tecla…';
+            b.textContent = 'PULSA…';
             b.classList.add('listening');
             I.onRebind = (code) => {
               if (code) {

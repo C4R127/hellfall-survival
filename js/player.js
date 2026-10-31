@@ -146,7 +146,7 @@
         this.stamina = Math.min(this.maxStamina, this.stamina + this.staminaRegen * dt);
         if (this.exhausted && this.stamina > this.maxStamina * 0.35) this.exhausted = false;
       }
-      if (map.inToxic(this.x, this.y)) speed *= 0.85;
+      if (map.inToxic(this.x, this.y)) speed *= map.poolKind.slow;
 
       // dash
       const D = this.dash;
@@ -160,7 +160,7 @@
         if (D.charges === D.max - 1) D.t = 0;
         this.iframes = Math.max(this.iframes, 0.22);
         HF.Audio.play('dash');
-        g.particles.burst(this.x, this.y, 10, { type: 'smoke', speed: [20, 80], life: [0.3, 0.5], size: [5, 9], color: '#556', grow: 8 });
+        for (let i = 0; i < 3; i++) HF.FX.smoke(this.x + U.rand(-6, 6), this.y + U.rand(-6, 6), -dx * 40, -dy * 40);
       }
 
       if (D.active > 0) {
@@ -169,7 +169,8 @@
         D.ghostT -= dt;
         if (D.ghostT <= 0) {
           D.ghostT = 0.025;
-          g.particles.spawn('ghost', this.x, this.y, 0, 0, 0.25, 1, '#fff', { img: HF.Sprites.get('player', 0).img, angle: this.angle });
+          const ta = this.torsoAnim;
+          if (ta) g.particles.spawn('ghost', this.x, this.y, 0, 0, 0.25, 1, '#fff', { sheet: ta.sheet, anim: ta.anim, frame: ta.frame, dir: HF.Assets.dirIndex(this.angle, 32) });
         }
         if (D.active <= 0) { this.vx *= 0.3; this.vy *= 0.3; }
       } else {
@@ -180,6 +181,12 @@
       this.kx *= kd; this.ky *= kd;
       this.x += (this.vx + this.kx) * dt;
       this.y += (this.vy + this.ky) * dt;
+      if (this.pullT > 0 && D.active <= 0) {
+        this.pullT -= dt;
+        const a = Math.atan2(this.pullY - this.y, this.pullX - this.x);
+        const d = Math.hypot(this.pullY - this.y, this.pullX - this.x);
+        if (d > 30) { this.x += Math.cos(a) * this.pullF * dt; this.y += Math.sin(a) * this.pullF * dt; }
+      }
       HF.Collision.resolveCircleMap(this, map);
       for (const b of g.barrels) if (b.alive) HF.Collision.separate(b, this, 1000, 1);
       if (moving) this.walkPhase += dt * speed * 0.05;
@@ -218,13 +225,14 @@
       this.recoilKick = Math.max(0, this.recoilKick - dt * 40);
       if (this.regen > 0) this.hp = Math.min(this.maxHp, this.hp + this.regen * dt);
 
-      // zona contaminada
+      // zona de peligro del sector (contaminación, escoria, fuga criogénica o grieta)
       if (map.inToxic(this.x, this.y)) {
+        const k = map.poolKind;
         this.toxicT -= dt;
         if (this.toxicT <= 0) {
           this.toxicT = 0.35;
-          this.takeDamage(3, { env: true, iframes: 0 });
-          g.particles.burst(this.x, this.y, 3, { type: 'dot', speed: [20, 60], life: [0.3, 0.6], size: [2, 3], color: '#8aff3a' });
+          this.takeDamage(k.dps * 0.35, { env: true, iframes: 0, source: 'pool_map' });
+          g.particles.burst(this.x, this.y, 3, { type: 'dot', speed: [20, 60], life: [0.3, 0.6], size: [1, 2], color: k.bubble });
         }
       }
     }
@@ -252,9 +260,7 @@
           const R = 230;
           HF.Audio.play('shockwave');
           g.shake(8);
-          g.particles.spawn('ring', this.x, this.y, 0, 0, 0.45, R, '#7fdcff', { add: true });
-          g.particles.spawn('ring', this.x, this.y, 0, 0, 0.3, R * 0.6, '#ffffff', { add: true });
-          g.particles.light(this.x, this.y, 320, '120,200,255', 0.9, 0.3);
+          HF.FX.shockwave(this.x, this.y, R);
           g.forEachEnemyInRadius(this.x, this.y, R, (e, d) => {
             const a = U.angleTo(this.x, this.y, e.x, e.y);
             const f = 1 - d / (R + e.r);
@@ -279,7 +285,7 @@
       if (!opts.env && (this.iframes > 0 || this.dash.active > 0)) return false;
       if (this.power.invul > 0) return false;
       if (this.shieldActive) {
-        g.particles.spawn('ring', this.x, this.y, 0, 0, 0.2, 30, '#3affff', { add: true });
+        g.particles.spawn('ring', this.x, this.y, 0, 0, 0.2, 22, '#3affff', { add: true });
         return false;
       }
       if (!opts.env && this.evasion > 0 && Math.random() < this.evasion) {
@@ -306,6 +312,8 @@
       }
       return true;
     }
+    /** Arrastre externo hacia un punto (el dash permite escapar). */
+    pull(x, y, force, t) { this.pullX = x; this.pullY = y; this.pullF = force; this.pullT = Math.max(this.pullT || 0, t); }
     heal(n) { this.hp = Math.min(this.maxHp, this.hp + n); }
     addArmor(n) { this.armor = Math.min(this.maxArmor, this.armor + n); }
     addAmmo(type, n) {
@@ -333,58 +341,63 @@
       return v;
     }
 
-    /* ---------------- render ---------------- */
+    /* ---------------- presentación ---------------- */
+    /** Actualiza los animadores (capa visual; no modifica la lógica). */
+    animate(dt) {
+      if (!this.legsAnim) { this.legsAnim = new HF.Animator(); this.torsoAnim = new HF.Animator(); this.deathAnim = new HF.Animator(); this.legDir = 2; }
+      const A = HF.Assets;
+      if (!this.alive) {
+        this.deathAnim.set('player_death', 'death');
+        this.deathAnim.update(dt);
+        return;
+      }
+      const sp = Math.hypot(this.vx, this.vy);
+      const sprinting = sp > this.speed * 1.15;
+      if (sp > 25) this.legDir = A.dirIndex(Math.atan2(this.vy, this.vx), 8);
+      else this.legDir = A.dirIndex(this.angle, 8);
+      this.legsAnim.set('player_legs', sp > 25 ? (sprinting ? 'run' : 'walk') : 'idle');
+      this.legsAnim.update(dt, sp > 25 ? Math.min(1.6, sp / this.speed) : 1);
+
+      const sheet = 'player_' + this.current, w = this.weapon;
+      this.shootT = Math.max(0, (this.shootT || 0) - dt);
+      if (this.hurtFlash > 0.08) { this.torsoAnim.set(sheet, 'hurt'); }
+      else if (w.reloading) { this.torsoAnim.set(sheet, 'reload'); this.torsoAnim.progress(1 - w.reloadT / w.reloadMax); }
+      else if (this.shootT > 0) { this.torsoAnim.set(sheet, 'shoot'); this.torsoAnim.progress(1 - this.shootT / 0.09); }
+      else { this.torsoAnim.set(sheet, 'idle'); this.torsoAnim.update(dt); }
+    }
+    /** Posición visual de la boca del arma (según la dirección dibujada). */
+    muzzlePoint() {
+      const s = HF.Assets.sheet('player_' + this.current);
+      const dirs = 32, d = HF.Assets.dirIndex(this.angle, dirs), a = (d / dirs) * U.TAU;
+      const m = (s && s.meta && s.meta.muzzle) || [20, 1.6];
+      return { x: this.x + Math.cos(a) * m[0] - Math.sin(a) * m[1], y: this.y + Math.sin(a) * m[0] + Math.cos(a) * m[1], a };
+    }
+
     render(ctx) {
-      const g = this.game;
-      const t = g.time;
-      // sombra
-      ctx.fillStyle = 'rgba(0,0,0,0.4)';
-      ctx.beginPath(); ctx.ellipse(this.x + 3, this.y + 6, 14, 10, 0, 0, U.TAU); ctx.fill();
-
-      if (this.iframes > 0 && this.dash.active <= 0 && Math.floor(t * 30) % 2 === 0) ctx.globalAlpha = 0.5;
-
-      const moving = Math.abs(this.vx) + Math.abs(this.vy) > 20;
-      const frame = moving ? Math.floor(this.walkPhase) % 2 : 0;
-      const spr = HF.Sprites.get('player', frame);
-      const wsp = HF.Sprites.get('w_' + this.current);
-      ctx.save();
-      ctx.translate(this.x, this.y);
-      ctx.rotate(this.angle);
-      const kick = -this.recoilKick;
-      ctx.drawImage(wsp.img, 14 + kick, 4 - wsp.h / 2 + 2);
-      const bob = moving ? Math.sin(this.walkPhase * Math.PI) * 0.04 : 0;
-      ctx.scale(1 + bob, 1 - bob);
-      ctx.drawImage(spr.img, -spr.w / 2, -spr.h / 2);
-      if (this.hurtFlash > 0) {
-        ctx.globalAlpha = this.hurtFlash * 4;
-        ctx.drawImage(spr.white, -spr.w / 2, -spr.h / 2);
+      const g = this.game, t = g.time, A = HF.Assets;
+      if (!this.legsAnim) this.animate(0);
+      if (!this.alive) {
+        A.drawImage(ctx, 'shadow_m', this.x + 2, this.y + 6);
+        this.deathAnim.draw(ctx, A.dirIndex(this.angle, 8), this.x, this.y);
+        return;
       }
-      ctx.restore();
-      ctx.globalAlpha = 1;
+      A.drawImage(ctx, 'shadow_m', this.x + 2, this.y + 7);
+      const blink = this.iframes > 0 && this.dash.active <= 0 && Math.floor(t * 30) % 2 === 0;
+      const alpha = blink ? 0.55 : 1;
+      const bob = this.legsAnim.anim !== 'idle' && (this.legsAnim.frame % 3 === 1) ? 1 : 0;
+      this.legsAnim.draw(ctx, this.legDir, this.x, this.y + 1, { alpha });
+      const tint = this.berserkActive || this.power.quad > 0 ? { color: '#ff2a1a', a: 0.22 + Math.sin(t * 10) * 0.1 } : null;
+      this.torsoAnim.draw(ctx, A.dirIndex(this.angle, 32), this.x, this.y - bob, { alpha, flash: this.hurtFlash > 0 ? Math.min(1, this.hurtFlash * 4) : 0, tint });
 
-      // escudo / auras
+      // escudo / invulnerabilidad: burbuja hexagonal animada
       if (this.shieldActive || this.power.invul > 0) {
-        ctx.strokeStyle = '#3affff';
-        ctx.globalAlpha = 0.5 + Math.sin(t * 12) * 0.2;
-        ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(this.x, this.y, 24, 0, U.TAU); ctx.stroke();
-        ctx.globalAlpha = 0.12; ctx.fillStyle = '#3affff'; ctx.fill();
-        ctx.globalAlpha = 1;
-      }
-      if (this.berserkActive || this.power.quad > 0) {
-        ctx.strokeStyle = '#ff3a3a'; ctx.globalAlpha = 0.45; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(this.x, this.y, 20 + Math.sin(t * 10) * 2, 0, U.TAU); ctx.stroke();
-        ctx.globalAlpha = 1;
+        A.draw(ctx, 'fx_shield', 'play', Math.floor(t * 8) % 4, 0, this.x, this.y, { alpha: 0.75 + Math.sin(t * 12) * 0.2 });
       }
       if (this.overdriveActive || this.power.rapid > 0) {
-        if (Math.random() < 0.4) g.particles.spawn('spark', this.x + U.rand(-12, 12), this.y + U.rand(-12, 12), 0, -60, 0.2, 1.5, '#ffd03a', { add: true });
+        if (Math.random() < 0.35) g.particles.spawn('spark', this.x + U.rand(-11, 11), this.y + U.rand(-11, 11), 0, -70, 0.2, 1, '#ffd03a', { add: true });
       }
-      // barra de recarga
-      const w = this.weapon;
-      if (w.reloading) {
-        const f = 1 - w.reloadT / w.reloadMax;
-        ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(this.x - 18, this.y + 22, 36, 5);
-        ctx.fillStyle = '#ffd03a'; ctx.fillRect(this.x - 17, this.y + 23, 34 * f, 3);
+      if (this.berserkActive || this.power.quad > 0) {
+        if (Math.random() < 0.3) g.particles.spawn('dot', this.x + U.rand(-12, 12), this.y + U.rand(-12, 12), 0, -40, 0.35, 1, '#ff4a2a', { add: true });
       }
     }
   }

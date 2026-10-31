@@ -8,9 +8,9 @@
 
   const ENEMIES = {
     crawler: {
-      name: 'Rastrero', role: 'Básico', hp: 30, speed: 92, dmg: 9, r: 13, score: 50, xp: 9, coin: 0.4,
+      name: 'Errante', role: 'Básico', hp: 30, speed: 92, dmg: 9, r: 13, score: 50, xp: 9, coin: 0.4,
       behavior: 'melee', attackCd: 0.9, windup: 0.2, reach: 8, mass: 1, blood: '#8a1a1a',
-      desc: 'Criatura débil que ataca en grandes grupos.',
+      desc: 'Superviviente mutado por la anomalía. Ataca en grandes grupos.',
     },
     stalker: {
       name: 'Acechador', role: 'Rápido', hp: 22, speed: 172, dmg: 11, r: 11, score: 80, xp: 11, coin: 0.45,
@@ -23,19 +23,41 @@
       desc: 'Montaña de carne blindada. Golpea el suelo con fuerza.',
     },
     spitter: {
-      name: 'Escupidor', role: 'A distancia', hp: 48, speed: 78, dmg: 11, r: 13, score: 110, xp: 15, coin: 0.55,
-      behavior: 'ranged', range: [220, 380], attackCd: 2.0, windup: 0.35, projSpeed: 300, mass: 1.1, blood: '#6aaa2a',
-      desc: 'Mantiene la distancia y escupe ácido.',
+      name: 'Tejedor', role: 'A distancia', hp: 48, speed: 78, dmg: 9, r: 13, score: 110, xp: 15, coin: 0.55,
+      behavior: 'ranged', range: [220, 380], attackCd: 2.3, windup: 0.4, projSpeed: 260, mass: 1.1, blood: '#6aaa2a',
+      desc: 'Mantiene la distancia y proyecta glóbulos tóxicos.',
     },
     bloater: {
-      name: 'Hinchado', role: 'Explosivo', hp: 44, speed: 138, dmg: 32, r: 14, score: 120, xp: 13, coin: 0.5,
+      name: 'Incinerador', role: 'Explosivo', hp: 44, speed: 138, dmg: 32, r: 14, score: 120, xp: 13, coin: 0.5,
       behavior: 'explode', windup: 0.55, reach: 44, explodeR: 95, mass: 1.2, blood: '#e0902a',
-      desc: 'Corre hacia ti y estalla. Dispárale de lejos.',
+      desc: 'Acumula energía inestable y estalla cerca de ti. Dispárale de lejos.',
     },
     warlock: {
-      name: 'Invocador', role: 'Especial', hp: 130, speed: 68, dmg: 13, r: 15, score: 300, xp: 42, coin: 1,
+      name: 'Guardián', role: 'Especial', hp: 130, speed: 68, dmg: 13, r: 15, score: 300, xp: 42, coin: 1,
       behavior: 'summoner', range: [300, 470], attackCd: 2.8, windup: 0.4, summonCd: 6.5, auraR: 170, mass: 1.5, blood: '#9a4aff',
-      desc: 'Invoca rastreros y protege con un escudo a sus aliados.',
+      desc: 'Invoca errantes y protege con un escudo a los aliados cercanos.',
+    },
+    phantom: {
+      name: 'Espectro', role: 'Dimensional', hp: 42, speed: 112, dmg: 14, r: 12, score: 150, xp: 18, coin: 0.5,
+      behavior: 'melee', blink: true, attackCd: 0.9, windup: 0.16, reach: 8, mass: 0.8, blood: '#6ad8ff',
+      desc: 'Se desvanece y reaparece junto a su presa. Vigila tu espalda.',
+    },
+    mortar: {
+      name: 'Artillero', role: 'Artillería', hp: 85, speed: 50, dmg: 15, r: 15, score: 180, xp: 22, coin: 0.7,
+      behavior: 'artillery', range: [380, 620], attackCd: 3.8, windup: 0.6, mass: 2, armor: 0.1, blood: '#c86a3a',
+      desc: 'Bombardea zonas desde lejos con escoria ardiente. No te quedes quieto.',
+    },
+    swarm: {
+      name: 'Parásito', role: 'Enjambre', hp: 10, speed: 205, dmg: 5, r: 8, score: 20, xp: 3, coin: 0.12,
+      behavior: 'melee', attackCd: 0.6, windup: 0.08, reach: 5, mass: 0.35, blood: '#b02a2a',
+      desc: 'Diminutos y veloces. Brotan en enjambres desde la Brecha.',
+    },
+    // copia ilusoria del Arconte del Vacío (solo aparece en su fase final)
+    mirage: {
+      name: 'Espejismo', role: 'Ilusión', hp: 90, speed: 80, dmg: 12, r: 30, score: 100, xp: 10, coin: 0.2,
+      behavior: 'ranged', range: [260, 440], attackCd: 2.2, windup: 0.45, projSpeed: 230, projType: 'rift', projColor: '#c77aff',
+      mass: 6, blood: '#b07aff', sheet: 'boss_archon_rage', hidden: true,
+      desc: 'Copia ilusoria del Arconte del Vacío.',
     },
   };
 
@@ -74,6 +96,8 @@
       this.angle = Math.random() * U.TAU;
       this.summonT = d.summonCd ? U.rand(2, d.summonCd) : 0;
       this.lungeT = U.rand(1, 2);
+      this.blinkT = U.rand(1.5, 3);
+      this.blinkWind = 0;
       this.lungeActive = 0;
       this.strafe = Math.random() < 0.5 ? -1 : 1;
       this.strafeT = U.rand(1, 3);
@@ -82,6 +106,8 @@
       this.invulnerable = false;
       this.summoned = !!mods.summoned;
       this.fuseSfx = false;
+      this.attackVis = 0;
+      this.summons = 0;
       return this;
     }
 
@@ -134,7 +160,7 @@
         case 'chase':
         case 'search': {
           this.state = this.hasLos ? 'chase' : 'search';
-          if (d.behavior === 'ranged' || d.behavior === 'summoner') {
+          if (d.behavior === 'ranged' || d.behavior === 'summoner' || d.behavior === 'artillery') {
             if (this.hasLos) {
               this.strafeT -= dt;
               if (this.strafeT <= 0) { this.strafeT = U.rand(1.2, 2.8); this.strafe *= -1; }
@@ -151,7 +177,9 @@
             }
             if (d.behavior === 'summoner') {
               this.summonT -= dt;
-              if (this.summonT <= 0 && g.aliveEnemies < g.waves.maxAlive) {
+              // límite de invocaciones por Guardián para que las oleadas no se alarguen sin fin
+              if (this.summonT <= 0 && (this.summons || 0) < 3 && g.aliveEnemies < g.waves.maxAlive) {
+                this.summons = (this.summons || 0) + 1;
                 this.summonT = d.summonCd;
                 g.summon(this, 'crawler', this.elite ? 3 : 2);
               }
@@ -160,6 +188,19 @@
             const a = chaseDir();
             const sm = this.state === 'search' ? 0.9 : 1;
             mvx = Math.cos(a) * spd * sm; mvy = Math.sin(a) * spd * sm;
+            // Espectro: se desvanece y reaparece junto al jugador
+            if (d.blink) {
+              this.blinkT -= dt;
+              if (this.blinkWind > 0) {
+                this.blinkWind -= dt;
+                mvx = mvy = 0;
+                if (this.blinkWind <= 0) this.doBlink(g);
+              } else if (this.hasLos && dist > 150 && dist < 560 && this.blinkT <= 0) {
+                this.blinkWind = 0.45;
+                this.blinkT = U.rand(2.8, 4.2);
+                HF.Audio.play('summon', { vol: g.sfxVol(this.x, this.y) * 0.7 });
+              }
+            }
             // salto del acechador
             if (d.lunge) {
               this.lungeT -= dt;
@@ -208,6 +249,7 @@
     executeAttack(g, dist, toP) {
       const d = this.def, p = g.player;
       this.atkT = d.attackCd || 1;
+      this.attackVis = 0.22;
       switch (d.behavior) {
         case 'melee':
           if (dist < this.r + p.r + d.reach + 10) {
@@ -236,8 +278,18 @@
           const a = U.angleTo(this.x, this.y, ax, ay);
           const n = this.elite ? 3 : 1;
           for (let i = 0; i < n; i++) {
-            g.enemyShot(this.x + Math.cos(a) * 14, this.y + Math.sin(a) * 14, a + (i - (n - 1) / 2) * 0.2, d.projSpeed, this.dmg, 6, 'acid', '#9aff3a');
+            g.enemyShot(this.x + Math.cos(a) * 14, this.y + Math.sin(a) * 14, a + (i - (n - 1) / 2) * 0.2, d.projSpeed, this.dmg, 6, d.projType || 'acid', d.projColor || '#9aff3a');
           }
+          break;
+        }
+        case 'artillery': {
+          // proyectil de escoria en parábola hacia la posición prevista del jugador
+          const lead = 0.55;
+          const tx = p.x + p.vx * lead, ty = p.y + p.vy * lead;
+          const R = this.elite ? 70 : 56;
+          g.addHazard({ kind: 'telegraph', x: tx, y: ty, r: R, delay: 1.2, dmg: this.dmg, color: '255,120,40', leaveAcid: this.elite, src: 'mortar' });
+          g.particles.spawn('lob', this.x, this.y - 6, (tx - this.x) / 1.2, (ty - this.y + 6) / 1.2, 1.2, 1, '#ff8a2a', { drag: 0, sheet: 'proj_shell' });
+          HF.Audio.play('slam', { vol: g.sfxVol(this.x, this.y) * 0.6 });
           break;
         }
         case 'summoner': {
@@ -250,6 +302,24 @@
         }
       }
       this.setState(this.hasLos ? 'chase' : 'search');
+    }
+
+    doBlink(g) {
+      const p = g.player;
+      for (let k = 0; k < 10; k++) {
+        const a = Math.random() * U.TAU, r = U.rand(55, 90);
+        const x = p.x + Math.cos(a) * r, y = p.y + Math.sin(a) * r;
+        if (g.map.isFreeCircle(x, y, this.r + 2) && g.map.flowDist(x, y) < 65535) {
+          g.particles.anim('fx_portalViolet', this.x, this.y, { speed: 2.4 });
+          this.x = x; this.y = y;
+          this.vx = this.vy = 0;
+          this.angle = U.angleTo(x, y, p.x, p.y);
+          this.atkT = Math.min(this.atkT, 0.25);
+          g.particles.anim('fx_portalViolet', x, y, { speed: 2.4 });
+          g.particles.burst(x, y, 8, { type: 'spark', speed: [60, 180], life: [0.2, 0.4], size: [1, 1], color: ['#6ad8ff', '#e0f8ff'], add: true });
+          return;
+        }
+      }
     }
 
     takeDamage(g, dmg, opts) {
@@ -273,7 +343,7 @@
       if (!this.alive) return;
       this.alive = false;
       this.state = 'dead'; // DEATH
-      this.dying = 0.22;
+      this.dying = 0.45; // duración de la animación de muerte (solo visual)
       g.onEnemyKilled(this, opts);
       if (this.def.behavior === 'explode') {
         const R = this.def.explodeR * this.scale * (opts && opts.selfDestruct ? 1 : 0.85);
@@ -281,80 +351,81 @@
       }
     }
 
-    render(ctx, g) {
-      const t = g.time;
-      const frame = Math.floor(this.walkPhase) % 2;
-      const spr = HF.Sprites.get(this.type, frame);
-      let sc = this.scale;
-      let alpha = 1;
-      if (!this.alive) {
-        const k = this.dying / 0.22;
-        sc *= 0.6 + 0.4 * k;
-        alpha = k;
-      } else if (this.state === 'idle' && this.stateT < 0.35) {
-        sc *= 0.4 + (this.stateT / 0.35) * 0.6;
+    /* ---------------- presentación ---------------- */
+    /** Elige la animación según el estado de la IA (solo visual). */
+    animate(dt) {
+      if (!this.anim) this.anim = new HF.Animator();
+      const sheet = this.def.sheet || 'enemy_' + this.type + (this.elite ? '_elite' : '');
+      const a = this.anim, d = this.def;
+      this.attackVis = Math.max(0, (this.attackVis || 0) - dt);
+      if (!this.alive) { a.set(sheet, 'death'); a.update(dt); return; }
+      if (this.state === 'attack') {
+        a.set(sheet, 'windup');
+        a.progress(1 - this.stateT / (d.windup || 0.3));
+        return;
       }
+      if (this.attackVis > 0) { a.set(sheet, 'attack'); a.progress(1 - this.attackVis / 0.22); return; }
+      if (this.state === 'hurt') { a.set(sheet, 'hurt'); return; }
+      if (this.state === 'idle') { a.set(sheet, 'idle'); a.update(dt); return; }
+      const sp = Math.hypot(this.vx, this.vy);
+      a.set(sheet, sp > 8 ? 'move' : 'idle');
+      a.update(dt, sp > 8 ? U.clamp(sp / d.speed, 0.5, 1.8) : 1);
+    }
+
+    render(ctx, g) {
+      const A = HF.Assets, t = g.time;
+      if (!this.anim) this.animate(0);
+      const d = this.def;
+      let alpha = 1;
+      if (this.alive && this.state === 'idle' && this.stateT < 0.35) alpha = 0.35 + (this.stateT / 0.35) * 0.65;
+      if (!this.alive) alpha = Math.min(1, this.dying / 0.15);
+      if (this.blinkWind > 0) alpha *= 0.25 + (this.blinkWind / 0.45) * 0.6 * (Math.floor(t * 30) % 2 ? 1 : 0.5);
+      if (this.type === 'phantom' && this.alive && this.blinkWind <= 0) alpha *= 0.85 + Math.sin(t * 7 + this.id) * 0.15;
+      // el espejismo se delata con un parpadeo ocasional
+      if (this.type === 'mirage' && this.alive && Math.sin(t * 3.1 + this.id) > 0.92) alpha *= 0.4;
 
       // telegrafiado de ataques
       if (this.alive && this.state === 'attack') {
-        const d = this.def;
         const f = 1 - this.stateT / (d.windup || 0.3);
         if (d.behavior === 'slam') {
           const R = d.slamR * this.scale;
           const sx = this.x + Math.cos(this.angle) * 18, sy = this.y + Math.sin(this.angle) * 18;
-          ctx.fillStyle = `rgba(255,60,40,${0.12 + f * 0.2})`;
-          ctx.beginPath(); ctx.arc(sx, sy, R * f, 0, U.TAU); ctx.fill();
-          ctx.strokeStyle = 'rgba(255,80,60,0.7)'; ctx.lineWidth = 2;
-          ctx.beginPath(); ctx.arc(sx, sy, R, 0, U.TAU); ctx.stroke();
+          ctx.fillStyle = '#ff3a2a';
+          ctx.globalAlpha = 0.3 + f * 0.3;
+          HF.PX.ditherDisc(ctx, sx, sy, R * f, Math.floor(t * 12) & 1);
+          ctx.globalAlpha = 0.9;
+          HF.PX.ring(ctx, sx, sy, R, 1);
+          ctx.globalAlpha = 1;
         } else if (d.behavior === 'explode') {
-          const R = d.explodeR * this.scale;
-          ctx.strokeStyle = `rgba(255,160,40,${0.3 + f * 0.5})`; ctx.lineWidth = 2;
-          ctx.beginPath(); ctx.arc(this.x, this.y, R, 0, U.TAU); ctx.stroke();
-          sc *= 1 + f * 0.35 + Math.sin(t * 50) * 0.05;
+          ctx.fillStyle = Math.floor(t * 14) % 2 ? '#ffd04a' : '#ff6a20';
+          HF.PX.ring(ctx, this.x, this.y, d.explodeR * this.scale, 1);
         }
       }
 
-      // sombra
-      ctx.globalAlpha = alpha * 0.4;
-      ctx.fillStyle = '#000';
-      ctx.beginPath(); ctx.ellipse(this.x + 3, this.y + 5, this.r * 1.05, this.r * 0.75, 0, 0, U.TAU); ctx.fill();
-      ctx.globalAlpha = alpha;
-
-      if (this.elite) {
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.fillStyle = 'rgba(255,190,40,0.18)';
-        ctx.beginPath(); ctx.arc(this.x, this.y, this.r * 1.6 + Math.sin(t * 6) * 2, 0, U.TAU); ctx.fill();
-        ctx.globalCompositeOperation = 'source-over';
-      }
-
-      ctx.save();
-      ctx.translate(this.x, this.y);
-      ctx.rotate(this.angle);
-      const wob = Math.sin(this.walkPhase * Math.PI) * 0.05;
-      ctx.scale(sc * (1 + wob), sc * (1 - wob));
-      ctx.drawImage(spr.img, -spr.w / 2, -spr.h / 2);
-      if (this.flash > 0 || (this.state === 'attack' && this.def.behavior === 'explode' && Math.floor(t * 16) % 2)) {
-        ctx.globalAlpha = alpha * 0.85;
-        ctx.drawImage(spr.white, -spr.w / 2, -spr.h / 2);
-      }
-      ctx.restore();
-      ctx.globalAlpha = 1;
+      const r = this.r;
+      A.drawImage(ctx, r > 20 ? 'shadow_l' : r > 13 ? 'shadow_m' : 'shadow_s', this.x + 2, this.y + Math.round(r * 0.45), { alpha: alpha * 0.9 });
+      const fuseBlink = this.state === 'attack' && d.behavior === 'explode' && Math.floor(t * 16) % 2;
+      this.anim.draw(ctx, A.dirIndex(this.angle, 8), this.x, this.y, { alpha, flash: this.flash > 0.035 ? 0.75 : fuseBlink ? 0.55 : 0 });
 
       if (this.shielded && this.alive) {
-        ctx.strokeStyle = 'rgba(190,120,255,0.65)';
-        ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(this.x, this.y, this.r + 6, 0, U.TAU); ctx.stroke();
+        ctx.fillStyle = '#b07aff';
+        ctx.globalAlpha = 0.55 + Math.sin(t * 8 + this.id) * 0.2;
+        HF.PX.ring(ctx, this.x, this.y, r + 5, 1);
+        if (Math.floor(t * 6 + this.id) % 3 === 0) ctx.fillRect(Math.round(this.x + Math.cos(t * 3) * (r + 5)), Math.round(this.y + Math.sin(t * 3) * (r + 5)), 2, 2);
+        ctx.globalAlpha = 1;
       }
       if (this.slowT > 0 && this.alive && Math.random() < 0.3) {
-        g.particles.spawn('spark', this.x + U.rand(-this.r, this.r), this.y + U.rand(-this.r, this.r), U.rand(-40, 40), U.rand(-40, 40), 0.1, 1, '#c9b8ff', { add: true });
+        g.particles.spawn('spark', this.x + U.rand(-r, r), this.y + U.rand(-r, r), U.rand(-40, 40), U.rand(-40, 40), 0.1, 1, '#c9b8ff', { add: true });
       }
-      // barra de vida
+      // barra de vida pixelada
       if (this.alive && this.hp < this.maxHp) {
-        const w = this.r * 2;
-        ctx.fillStyle = 'rgba(0,0,0,0.6)';
-        ctx.fillRect(this.x - w / 2, this.y - this.r - 10, w, 4);
-        ctx.fillStyle = this.elite ? '#ffbe28' : '#e83a2a';
-        ctx.fillRect(this.x - w / 2, this.y - this.r - 10, w * Math.max(0, this.hp / this.maxHp), 4);
+        const w = Math.max(14, Math.round(r * 1.6)), x = Math.round(this.x - w / 2), y = Math.round(this.y - r - 9);
+        ctx.fillStyle = '#05040a';
+        ctx.fillRect(x - 1, y - 1, w + 2, 4);
+        ctx.fillStyle = '#3a0a08';
+        ctx.fillRect(x, y, w, 2);
+        ctx.fillStyle = this.elite ? '#ffcc3a' : '#e8341e';
+        ctx.fillRect(x, y, Math.max(1, Math.round(w * Math.max(0, this.hp / this.maxHp))), 2);
       }
     }
   }

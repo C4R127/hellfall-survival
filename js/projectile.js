@@ -61,13 +61,18 @@
         } else if (this.checkPlayer(g)) return false;
       }
 
-      if (this.type === 'rocket' || this.type === 'plasma' || this.type === 'orb') {
+      // estelas (solo visuales)
+      if (this.type === 'rocket' || this.type === 'plasma' || this.type === 'orb' || this.type === 'rift') {
         this.trailT -= dt;
         if (this.trailT <= 0) {
-          this.trailT = 0.02;
-          const c = this.type === 'rocket' ? '#777' : this.color;
-          g.particles.spawn(this.type === 'rocket' ? 'smoke' : 'dot', this.x, this.y, U.rand(-20, 20), U.rand(-20, 20),
-            this.type === 'rocket' ? 0.5 : 0.25, this.type === 'rocket' ? 4 : 3, c, { grow: this.type === 'rocket' ? 10 : 0, add: this.type !== 'rocket' });
+          if (this.type === 'rocket') {
+            this.trailT = 0.035;
+            HF.FX.smoke(this.x - Math.cos(this.angle) * 8, this.y - Math.sin(this.angle) * 8, U.rand(-10, 10), U.rand(-10, 10));
+            g.particles.spawn('dot', this.x - Math.cos(this.angle) * 8, this.y - Math.sin(this.angle) * 8, U.rand(-15, 15), U.rand(-15, 15), 0.2, 1, '#ffb040', { add: true });
+          } else {
+            this.trailT = 0.025;
+            g.particles.spawn('dot', this.x + U.rand(-2, 2), this.y + U.rand(-2, 2), 0, 0, 0.22, 1, this.color, { add: true });
+          }
         }
       }
 
@@ -102,10 +107,7 @@
         if (this.explode) { this.detonate(g); return true; }
         const kx = Math.cos(this.angle) * this.knock, ky = Math.sin(this.angle) * this.knock;
         g.damageEnemy(e, this.dmg, { crit: this.crit, kx, ky, x: this.x, y: this.y, weapon: this.weapon });
-        g.particles.burst(this.x, this.y, 4, {
-          type: 'spark', angle: this.angle + Math.PI, spread: 0.9, speed: [80, 260], life: [0.1, 0.25],
-          size: [1, 2], color: e.blood || '#a22', add: false,
-        });
+        HF.FX.hit(e, this.x, this.y, this.angle, this.crit, this.weapon);
         if (this.type === 'plasma') g.particles.light(this.x, this.y, 70, '90,240,255', 0.5, 0.12);
         if (this.pierce > 0) { this.pierce--; this.dmg *= 0.8; continue; }
         return true;
@@ -130,68 +132,40 @@
       const rr = this.r + p.r - 3;
       if (U.dist2(this.x, this.y, p.x, p.y) > rr * rr) return false;
       if (p.dash.active > 0) return false; // atraviesa durante el dash
-      p.takeDamage(this.dmg, { x: this.x, y: this.y });
-      g.particles.burst(this.x, this.y, 6, { type: 'dot', speed: [40, 160], life: [0.2, 0.4], size: [2, 3], color: this.color });
+      p.takeDamage(this.dmg, { x: this.x, y: this.y, source: 'proj_' + this.type });
+      g.particles.burst(this.x, this.y, 6, { type: 'dot', speed: [40, 160], life: [0.2, 0.4], size: [1, 2], color: this.color });
       return true;
     }
 
     impactWall(g) {
       if (this.explode) { this.detonate(g); return; }
-      const back = Math.atan2(-this.vy, -this.vx);
-      g.particles.burst(this.x - Math.cos(this.angle) * 4, this.y - Math.sin(this.angle) * 4, this.owner === 'player' ? 4 : 5, {
-        type: this.owner === 'player' ? 'spark' : 'dot', angle: back, spread: 1.1, speed: [60, 220], life: [0.08, 0.22],
-        size: [1, 2.5], color: this.color, add: true,
-      });
+      const x = this.x - Math.cos(this.angle) * 3, y = this.y - Math.sin(this.angle) * 3;
+      HF.FX.impactWall(x, y, this.angle, this.owner === 'player' ? (this.type === 'plasma' ? 'plasma' : 'bullet') : 'enemy');
     }
 
     detonate(g) {
       g.explode(this.x, this.y, this.explode, this.dmg, {
-        byPlayer: this.owner === 'player', hurtPlayer: this.owner === 'player' ? 0.35 : 1, crit: this.crit, weapon: this.weapon,
+        byPlayer: this.owner === 'player', hurtPlayer: this.owner === 'player' ? 0.2 : 1, crit: this.crit, weapon: this.weapon,
       });
     }
 
+    /** Cada tipo tiene forma propia (trazador, perdigón, esfera, cohete, glóbulo, orbe, astilla, anillo). */
     render(ctx) {
+      const A = HF.Assets, t = HF.game.time;
+      const dir16 = (a) => A.dirIndex(a, 16);
       switch (this.type) {
-        case 'bullet':
-        case 'pellet': {
-          const len = this.type === 'pellet' ? 0.012 : 0.022;
-          ctx.strokeStyle = this.color;
-          ctx.lineWidth = this.crit ? 3 : 2;
-          ctx.beginPath();
-          ctx.moveTo(this.x, this.y);
-          ctx.lineTo(this.x - this.vx * len, this.y - this.vy * len);
-          ctx.stroke();
+        case 'bullet': A.draw(ctx, this.crit ? 'proj_bulletCrit' : 'proj_bullet', 'fly', 0, dir16(Math.atan2(this.vy, this.vx)), this.x, this.y); break;
+        case 'pellet': A.draw(ctx, 'proj_pellet', 'fly', 0, dir16(Math.atan2(this.vy, this.vx)), this.x, this.y); break;
+        case 'plasma': A.draw(ctx, 'proj_plasma', 'fly', Math.floor(t * 14) % 4, 0, this.x, this.y); break;
+        case 'rocket': A.draw(ctx, 'proj_rocket', 'fly', Math.floor(t * 20) % 2, dir16(this.angle), this.x, this.y); break;
+        case 'grenade':
+          A.draw(ctx, 'proj_grenade', 'fly', Math.floor(this.angle * 0.6) % 4, 0, this.x, this.y);
+          if (this.fuse < 0.4 && Math.floor(this.fuse * 20) % 2) { ctx.fillStyle = '#ff3a2a'; ctx.fillRect(Math.round(this.x) - 1, Math.round(this.y) - 1, 3, 3); }
           break;
-        }
-        case 'plasma':
-        case 'orb':
-        case 'acid':
-        case 'boss': {
-          ctx.globalCompositeOperation = 'lighter';
-          ctx.fillStyle = this.color;
-          ctx.globalAlpha = 0.35;
-          ctx.beginPath(); ctx.arc(this.x, this.y, this.r * 2, 0, U.TAU); ctx.fill();
-          ctx.globalAlpha = 1;
-          ctx.beginPath(); ctx.arc(this.x, this.y, this.r, 0, U.TAU); ctx.fill();
-          ctx.fillStyle = '#fff';
-          ctx.beginPath(); ctx.arc(this.x, this.y, this.r * 0.45, 0, U.TAU); ctx.fill();
-          ctx.globalCompositeOperation = 'source-over';
-          break;
-        }
-        case 'rocket':
-        case 'grenade': {
-          const s = HF.Sprites.get(this.type);
-          ctx.save();
-          ctx.translate(this.x, this.y);
-          ctx.rotate(this.angle);
-          ctx.drawImage(s.img, -s.w / 2, -s.h / 2);
-          ctx.restore();
-          if (this.type === 'grenade' && this.fuse < 0.4 && Math.floor(this.fuse * 20) % 2) {
-            ctx.fillStyle = '#ff3a2a';
-            ctx.beginPath(); ctx.arc(this.x, this.y, 4, 0, U.TAU); ctx.fill();
-          }
-          break;
-        }
+        case 'acid': A.draw(ctx, 'proj_acid', 'fly', Math.floor(t * 10) % 3, 0, this.x, this.y); break;
+        case 'orb': A.draw(ctx, 'proj_orb', 'fly', Math.floor(t * 12) % 4, 0, this.x, this.y); break;
+        case 'rift': A.draw(ctx, 'proj_rift', 'fly', Math.floor(t * 12) % 4, 0, this.x, this.y); break;
+        default: A.draw(ctx, 'proj_ember', 'fly', Math.floor(t * 12) % 4, 0, this.x, this.y); break;
       }
     }
   }

@@ -9,17 +9,20 @@
       best: { score: 0, wave: 0, time: 0, level: 0 },
       cores: 0,
       unlockedWeapons: ['pistol', 'shotgun', 'rifle'],
+      unlockedSectors: ['s7'],
       meta: {},
       stats: {
         games: 0, kills: 0, time: 0, bosses: 0, bestCombo: 0, shots: 0,
-        coresEarned: 0, coinsEarned: 0, damageDealt: 0, killsByType: {},
+        coresEarned: 0, coinsEarned: 0, damageDealt: 0, killsByType: {}, bossTypes: {},
       },
       settings: {
         master: 0.8, music: 0.45, sfx: 0.8, musicOn: true, sfxOn: true,
         sensitivity: 1, pointerLock: false, quality: 'high', showFps: false,
         shake: true, damageNumbers: true, bindings: null,
+        pixelScale: 'auto', fx: 'high', cameraLead: true, reduceFlash: false, uiScale: '1', radio: true,
       },
       achievements: {},
+      story: { introSeen: false, endingSeen: false, logs: [], seenEnemies: [], dossiers: [] },
     };
   }
 

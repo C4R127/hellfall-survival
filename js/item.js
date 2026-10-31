@@ -22,7 +22,8 @@
       this.life = type === 'crate' ? 60 : type === 'power' ? 20 : 16;
       this.bob = Math.random() * 10;
       this.magnetized = false;
-      this.sprite = type === 'power' ? 'i_' + data : type === 'health' && data > 30 ? 'i_healthBig' : 'i_' + type;
+      this.sprite = 'pickup_' + (type === 'log' ? 'datalog' : type === 'power' ? data : type === 'health' && data > 30 ? 'healthBig' : type === 'ammo' ? 'ammo_' + data.type : type);
+      this.age = 0;
       return this;
     }
 
@@ -38,6 +39,7 @@
     update(dt, g) {
       const p = g.player;
       this.life -= dt;
+      this.age += dt;
       if (this.life <= 0) return false;
       this.bob += dt * 4;
       const d2 = U.dist2(this.x, this.y, p.x, p.y);
@@ -107,27 +109,32 @@
         case 'crate':
           g.openWeaponCrate(this.data);
           break;
+        case 'log':
+          HF.Story.collectLog(this.data);
+          HF.Audio.play('achievement');
+          break;
       }
-      P.burst(this.x, this.y, 6, { type: 'dot', speed: [40, 120], life: [0.2, 0.4], size: [2, 3], color: '#fff', add: true });
+      HF.FX.pickup(this.x, this.y);
     }
 
     render(ctx, g) {
-      const s = HF.Sprites.get(this.sprite);
-      if (!s) return;
+      const A = HF.Assets;
       if (this.life < 4 && Math.floor(this.life * 8) % 2 === 0) return; // parpadeo antes de desaparecer
-      const by = Math.sin(this.bob) * 2.5;
-      ctx.fillStyle = 'rgba(0,0,0,0.35)';
-      ctx.beginPath(); ctx.ellipse(this.x, this.y + 7, s.w * 0.35, 4, 0, 0, U.TAU); ctx.fill();
-      if (this.type === 'power' || this.type === 'crate') {
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.fillStyle = this.type === 'crate' ? 'rgba(255,190,40,0.2)' : 'rgba(255,255,255,0.15)';
-        ctx.beginPath(); ctx.arc(this.x, this.y + by, s.w * 0.75 + Math.sin(this.bob * 2) * 3, 0, U.TAU); ctx.fill();
-        ctx.globalCompositeOperation = 'source-over';
-      }
-      ctx.drawImage(s.img, Math.round(this.x - s.w / 2), Math.round(this.y - s.h / 2 + by));
-      if (this.type === 'ammo') {
-        ctx.fillStyle = HF.AMMO_TYPES[this.data.type].color;
-        ctx.fillRect(Math.round(this.x - s.w / 2 + 2), Math.round(this.y + s.h / 2 - 4 + by), s.w - 4, 2);
+      const s = A.sheet(this.sprite);
+      if (!s) return;
+      const by = Math.round(Math.sin(this.bob) * 1.5);
+      A.drawImage(ctx, s.fw > 20 ? 'shadow_m' : 'shadow_s', this.x, this.y + Math.round(s.fh * 0.35));
+      const f = Math.floor(g.time * 5 + this.bob) % s.anims.idle.frames;
+      const pop = this.age < 0.12;
+      A.draw(ctx, this.sprite, 'idle', f, 0, this.x, this.y - 2 + by, { flash: pop ? 0.8 : 0 });
+      if (this.type === 'power' || this.type === 'crate' || this.type === 'log') {
+        // destellos que orbitan para destacar objetos especiales
+        ctx.fillStyle = this.type === 'crate' ? '#ffcc3a' : '#ffffff';
+        const r = s.fw * 0.6;
+        for (let i = 0; i < 2; i++) {
+          const a = g.time * 3 + i * Math.PI;
+          ctx.fillRect(Math.round(this.x + Math.cos(a) * r), Math.round(this.y - 2 + by + Math.sin(a) * r * 0.6), 1, 1);
+        }
       }
     }
   }

@@ -68,6 +68,11 @@
     { id: 'rich', name: 'Chatarrero rico', desc: 'Consigue 1000 monedas en una partida.' },
     { id: 'level15', name: 'Evolucionado', desc: 'Llega al nivel 15 en una partida.' },
     { id: 'score50k', name: 'Récord de sector', desc: 'Consigue 50,000 puntos en una partida.' },
+    { id: 'evac', name: 'Evacuación', desc: 'Llega a un segundo sector del complejo.' },
+    { id: 'allsectors', name: 'Cartógrafo', desc: 'Visita los cuatro sectores del complejo.' },
+    { id: 'titans', name: 'Matatitanes', desc: 'Derrota a los cuatro jefes del complejo.' },
+    { id: 'ending', name: 'Sellar la Brecha', desc: 'Derrota al Núcleo de Ruptura y descubre el final.' },
+    { id: 'archivist', name: 'Archivista', desc: 'Recupera los 16 registros del complejo.' },
   ];
 
   const UpgradeSystem = {
@@ -104,7 +109,7 @@
       for (const id of HF.WEAPON_ORDER) {
         const wp = p.weapons[id];
         if (wp && wp.level < HF.WEAPON_MAX_LEVEL) {
-          items.push({ id: 'up_' + id, name: `Mejorar ${wp.def.short} (Nv ${wp.level} → ${wp.level + 1})`, desc: '+18% daño, +6% cadencia, +10% cargador.', cost: 35 * wp.level + w * 3, weapon: id, buy: () => { wp.level++; } });
+          items.push({ id: 'up_' + id, name: `Mejorar ${wp.def.short} (Nv ${wp.level} > ${wp.level + 1})`, desc: '+18% daño, +6% cadencia, +10% cargador.', cost: 35 * wp.level + w * 3, weapon: id, buy: () => { wp.level++; } });
         }
       }
       for (const id of HF.WEAPON_ORDER) {

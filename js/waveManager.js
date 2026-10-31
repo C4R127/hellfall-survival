@@ -8,7 +8,7 @@
   const MIN_SPAWN_DIST = 400;
 
   // oleada en la que aparece por primera vez cada tipo
-  const INTRO = { crawler: 1, stalker: 3, spitter: 4, warlock: 5, bloater: 6, brute: 8 };
+  const INTRO = { crawler: 1, stalker: 3, spitter: 4, warlock: 5, bloater: 6, brute: 8, swarm: 7, phantom: 12, mortar: 14 };
 
   class WaveManager {
     constructor(g) {
@@ -34,8 +34,8 @@
     config(n) {
       const isBoss = n % 10 === 0;
       const mods = {
-        hp: 1 + 0.1 * (n - 1) + 0.004 * (n - 1) ** 2,
-        dmg: 1 + 0.05 * (n - 1),
+        hp: 1 + 0.1 * (n - 1) + 0.0025 * (n - 1) ** 2,
+        dmg: 1 + 0.04 * (n - 1),
         speed: 1 + Math.min(0.35, 0.012 * (n - 1)),
       };
       const elite = n < 7 ? 0 : Math.min(0.28, 0.025 * (n - 6));
@@ -43,8 +43,8 @@
       const add = (t, c) => { counts[t] = (counts[t] || 0) + Math.round(c); };
 
       const fixed = {
-        1: { crawler: 8 },
-        2: { crawler: 14 },
+        1: { crawler: 10 },
+        2: { crawler: 16 },
         3: { crawler: 12, stalker: 6 },
         4: { crawler: 12, stalker: 5, spitter: 5 },
         5: { crawler: 12, stalker: 6, spitter: 4, warlock: 2 },
@@ -53,8 +53,16 @@
         8: { crawler: 18, stalker: 8, spitter: 6, warlock: 2, bloater: 5, brute: 2 },
         9: { crawler: 20, stalker: 10, spitter: 7, warlock: 3, bloater: 7, brute: 3 },
       };
+      // fauna característica del sector actual: aparece antes y con más frecuencia
+      const fauna = (this.g.map && this.g.map.sector.fauna) || [];
       if (fixed[n]) {
         for (const t in fixed[n]) add(t, fixed[n][t]);
+        if (n >= 7) add('swarm', 4 + n);
+        if (n >= 3) {
+          if (fauna.includes('mortar')) add('mortar', 1 + Math.floor(n / 3));
+          if (fauna.includes('phantom')) add('phantom', 2 + Math.floor(n / 2));
+          if (fauna.includes('swarm')) add('swarm', 6 + n);
+        }
       } else if (isBoss) {
         add('crawler', 6 + n * 0.6);
         add('stalker', n * 0.3);
@@ -64,13 +72,16 @@
         const w = {
           crawler: 1, stalker: 0.55, spitter: 0.35, bloater: 0.3,
           warlock: Math.min(0.14, 0.05 + n * 0.004), brute: Math.min(0.2, 0.06 + n * 0.005),
+          swarm: 0.45, phantom: 0.22, mortar: Math.min(0.18, 0.08 + n * 0.003),
         };
+        for (const t in w) if (n < INTRO[t] && !fauna.includes(t)) delete w[t];
+        for (const t of fauna) if (w[t]) w[t] *= 2.2;
         // oleadas temáticas para variar los patrones
         const theme = n % 4;
         if (theme === 1) w.stalker *= 2;
         if (theme === 2) { w.spitter *= 1.8; w.warlock *= 1.5; }
         if (theme === 3) { w.brute *= 1.8; w.bloater *= 1.6; }
-        const cost = { crawler: 1, stalker: 1.2, spitter: 1.6, bloater: 1.5, warlock: 4, brute: 5 };
+        const cost = { crawler: 1, stalker: 1.2, spitter: 1.6, bloater: 1.5, warlock: 4, brute: 5, swarm: 0.4, phantom: 1.9, mortar: 2.6 };
         let total = 0;
         for (const t in w) total += w[t];
         for (const t in w) add(t, (budget * (w[t] / total)) / cost[t]);
@@ -80,14 +91,15 @@
       for (const t in counts) for (let i = 0; i < counts[t]; i++) list.push(t);
       U.shuffle(list);
       // los tipos duros llegan más tarde dentro de la oleada
-      list.sort((a, b) => (a === 'brute' || a === 'warlock' ? 1 : 0) - (b === 'brute' || b === 'warlock' ? 1 : 0));
+      const late = (t) => (t === 'brute' || t === 'warlock' || t === 'mortar' ? 1 : 0);
+      list.sort((a, b) => late(a) - late(b));
 
       return {
         n, isBoss, mods, elite, list,
         total: list.length + (isBoss ? 1 : 0),
-        interval: Math.max(0.8, 2.8 - n * 0.09),
-        group: Math.min(8, 2 + Math.floor(n / 2.5)),
-        maxAlive: Math.min(110, 30 + n * 4),
+        interval: Math.max(0.8, 2.2 - n * 0.07),
+        group: Math.min(8, 3 + Math.floor(n / 2.5)),
+        maxAlive: Math.min(80, 28 + n * 3),
         patterns: n < 3 ? ['groups', 'frontal'] : n < 6 ? ['groups', 'frontal', 'lateral', 'circular'] : ['groups', 'frontal', 'lateral', 'circular', 'surround', 'combined'],
       };
     }
@@ -106,9 +118,9 @@
       g.respawnBarrels();
       g.onWaveStart(this.wave, this.cfg);
       if (this.bossWave) {
-        const tier = Math.floor(this.wave / 10);
-        const type = tier % 2 === 1 ? 'herald' : 'matriarch';
-        g.spawnBoss(type, Math.ceil(tier / 2));
+        // jefe del sector actual; el nivel sube con cada vuelta completa al complejo
+        const tier = Math.max(1, Math.ceil(Math.floor(this.wave / 10) / HF.SECTOR_ORDER.length));
+        g.spawnBoss(g.map.sector.boss, tier);
         this.spawnT = 6;
       }
     }

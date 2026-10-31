@@ -147,19 +147,14 @@
         }
         // casquillos
         if (d.type === 'bullet' || d.type === 'pellet') {
-          const ca = a + Math.PI / 2 + U.rand(-0.3, 0.3);
-          g.particles.spawn('debris', p.x + Math.cos(a) * 8, p.y + Math.sin(a) * 8, Math.cos(ca) * 120, Math.sin(ca) * 120,
-            0.6, d.type === 'pellet' ? 5 : 4, d.type === 'pellet' ? '#c03a22' : '#d8b04a', { drag: 6, spin: 18 });
+          HF.FX.casing(p.x + Math.cos(a) * 6, p.y + Math.sin(a) * 6, a, d.type === 'pellet');
         }
       }
 
       // fogonazo
-      g.particles.spawn('flash', mx, my, 0, 0, 0.06, d.type === 'rocket' ? 16 : d.pellets > 1 ? 14 : 9,
-        d.type === 'plasma' ? '#7ff' : '#ffd890', { add: true });
-      g.particles.burst(mx, my, d.pellets > 1 ? 6 : 3, {
-        type: 'spark', angle: a, spread: 0.35, speed: [200, 420], life: [0.04, 0.1], size: [1, 2], color: '#ffe0a0', add: true,
-      });
-      g.particles.light(mx, my, d.type === 'chain' ? 140 : 120, d.type === 'plasma' || d.type === 'chain' ? '120,220,255' : '255,200,120', 0.8, 0.06);
+      const mz = p.muzzlePoint();
+      HF.FX.muzzle(this.id, mz.x, mz.y, mz.a);
+      p.shootT = 0.09;
 
       p.bloom = Math.min(1.6, p.bloom + d.recoil / 450);
       p.kx -= Math.cos(a) * d.recoil * 0.6;
@@ -191,17 +186,17 @@
       if (!first) {
         const ex = mx + Math.cos(p.angle + U.rand(-0.3, 0.3)) * U.rand(60, 120);
         const ey = my + Math.sin(p.angle + U.rand(-0.3, 0.3)) * U.rand(60, 120);
-        g.particles.bolt(mx, my, ex, ey, this.def.color, 0.07, 1.5);
+        g.particles.bolt(mx, my, ex, ey, this.def.color, 0.07, 1);
         return;
       }
       const hit = [first];
       let cur = first, px = mx, py = my;
       const chains = this.def.chains + Math.floor((this.level - 1) / 2);
       for (let i = 0; i <= chains; i++) {
-        g.particles.bolt(px, py, cur.x, cur.y, this.def.color, 0.1, 2);
+        g.particles.bolt(px, py, cur.x, cur.y, this.def.color, 0.1, 1);
         const crit = Math.random() < s.crit;
         g.damageEnemy(cur, s.dmg * (crit ? p.critMult : 1) * (1 - i * 0.08), { crit, kx: 0, ky: 0, x: cur.x, y: cur.y, weapon: this.id, slow: 1.2 });
-        g.particles.burst(cur.x, cur.y, 3, { type: 'spark', speed: [60, 200], life: [0.08, 0.2], size: [1, 2], color: '#e0d8ff', add: true });
+        HF.FX.zap(cur.x, cur.y);
         px = cur.x; py = cur.y;
         let next = null, nd = this.def.chainRange * this.def.chainRange;
         g.hash.query(px, py, this.def.chainRange, chainTmp);
